@@ -1,0 +1,27 @@
+# Gradle / Android 构建产物
+.gradle/
+.kotlin/
+build/
+local.properties
+*.apk
+*.aab
+*.log
+
+# 签名与私有配置（禁止入库）
+keystore/
+keystore.properties
+*.jks
+*.keystore
+
+# IDE
+.idea/
+.vscode/
+*.iml
+
+# 系统文件
+.DS_Store
+Thumbs.db
+
+# 环境变量
+.env
+.env.*
