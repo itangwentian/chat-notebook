@@ -10,6 +10,7 @@ import com.chatnotebook.app.data.MessageAttachment
 import com.chatnotebook.app.data.MessageRecord
 import com.chatnotebook.app.data.QuoteRecord
 import com.chatnotebook.app.data.ReactionRecord
+import com.chatnotebook.app.data.REMINDER_EXPIRY_GRACE_MS
 import com.chatnotebook.app.data.REMINDER_SCHEDULED
 import com.chatnotebook.app.data.ReminderPreview
 import com.chatnotebook.app.data.ReminderRecord
@@ -24,6 +25,7 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.flowOf
@@ -311,7 +313,7 @@ class ChatViewModel(
                 }
         }
         viewModelScope.launch {
-            repository.scheduledReminders().collect { previews ->
+            repository.scheduledReminders().collectLatest { previews ->
                 val now = System.currentTimeMillis()
                 val upcoming = previews.filter { it.triggerAt > now }
                 _uiState.update {
@@ -320,6 +322,15 @@ class ChatViewModel(
                         // 最后一条提醒被取消或触发后收起列表并隐藏闹钟入口。
                         reminderListVisible = it.reminderListVisible && upcoming.isNotEmpty(),
                     )
+                }
+                // 到点后闹钟可能因权限或系统限制没有派发，应用保持打开时也要按宽限期把提醒置为过期，
+                // 否则消息气泡会一直保留提醒底色。
+                val nextExpiry = previews
+                    .filter { it.triggerAt > now - REMINDER_EXPIRY_GRACE_MS }
+                    .minOfOrNull { it.triggerAt + REMINDER_EXPIRY_GRACE_MS }
+                if (nextExpiry != null) {
+                    delay((nextExpiry - now).coerceAtLeast(0L))
+                    repository.rescheduleReminders()
                 }
             }
         }
@@ -557,7 +568,6 @@ class ChatViewModel(
         if (id in _uiState.value.organizingSessions) return
         viewModelScope.launch {
             repository.organizeSession(id)
-                .onSuccess { started -> if (started) _uiState.update { it.copy(notice = "后台整理中") } }
                 .onFailure { error -> _uiState.update { it.copy(notice = error.message ?: "无法开始整理") } }
         }
     }

@@ -8,6 +8,7 @@ import com.chatnotebook.app.data.MessageRecord
 import com.chatnotebook.app.data.QuoteRecord
 import com.chatnotebook.app.data.ReactionRecord
 import com.chatnotebook.app.data.REMINDER_CANCELLED
+import com.chatnotebook.app.data.REMINDER_EXPIRY_GRACE_MS
 import com.chatnotebook.app.data.ReminderDelivery
 import com.chatnotebook.app.data.ReminderPreview
 import com.chatnotebook.app.data.ReminderRecord
@@ -257,7 +258,7 @@ class ChatViewModelTest {
         assertEquals(1, repository.organizeCalls)
         assertEquals(secondId, model.uiState.value.activeSessionId)
         assertTrue(firstId in model.uiState.value.organizingSessions)
-        assertEquals("后台整理中", model.uiState.value.notice)
+        assertNull(model.uiState.value.notice)
 
         repository.unreadOrganizationSessions.value = setOf(firstId)
         assertTrue(firstId in model.uiState.value.unreadOrganizationSessions)
@@ -777,6 +778,28 @@ class ChatViewModelTest {
 
         assertTrue(model.uiState.value.scheduledReminders.isEmpty())
         assertFalse(model.uiState.value.reminderListVisible)
+    }
+
+    @Test fun overdueReminderIsExpiredWhileAppStaysOpen() = runTest {
+        model.createSession()
+        val sessionId = model.uiState.value.activeSessionId!!
+        repository.scheduledReminderState.value = listOf(
+            ReminderPreview(
+                id = "r1",
+                sessionId = sessionId,
+                messageId = null,
+                triggerAt = System.currentTimeMillis() + 60_000,
+                text = "买牛奶",
+                sessionTitle = "新对话",
+            ),
+        )
+        runCurrent()
+
+        advanceTimeBy(60_000)
+        assertEquals(0, repository.rescheduleCalls)
+
+        advanceTimeBy(REMINDER_EXPIRY_GRACE_MS + 1_000)
+        assertEquals(1, repository.rescheduleCalls)
     }
 
     @Test fun openingReminderSwitchesToItsSession() = runTest {
