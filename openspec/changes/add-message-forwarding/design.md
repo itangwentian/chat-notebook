@@ -13,7 +13,7 @@
 - 校验源、目标存在且未删除，源与目标不同，选中消息全部属于源且未删除；
 - 按 `createdAt`、`id` 排序，逐条复制 `role` 与 `currentContent`；
 - 每条新消息生成新 `id`，`createdAt/updatedAt = now() + index`，保证在目标末尾且顺序稳定；
-- 不复制 `formatSegments`、引用、表情、编辑历史、AI 结果与合并关系；
+- 不复制 `formatSegments`、引用、表情、编辑历史、整理结果与合并关系；
 - 更新目标会话 `updatedAt`，源会话不改；返回复制条数。
 
 选择复制 `currentContent` 而不是 `rawContent`，因为用户转发的是当前看到的内容（含编辑后的文本）。

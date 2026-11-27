@@ -12,7 +12,7 @@ fun buildMergedSegments(
 ): List<MessageFormatSegment> = selected.map { message ->
     val content = message.currentContent.replace(blankLineRun, "\n").trim()
     val text = if (message.role == "user") content
-    else "${if (message.role == "assistant") "AI" else message.role}：$content"
+    else "${if (message.role == "assistant") "助手" else message.role}：$content"
     MessageFormatSegment(text, formatOf(message.id)?.id)
 }
 
@@ -140,7 +140,7 @@ class ChatSessionService(
         require(content.isNotEmpty()) { "内容不能为空" }
         records.update { before ->
             val message = before.messages.firstOrNull { it.id == messageId } ?: error("消息不存在")
-            require(message.role == "user") { "AI 消息不可编辑" }
+            require(message.role == "user") { "助手消息不可编辑" }
             require(!message.isDeleted) { "消息已删除" }
             if (message.currentContent == content) return@update before
             val toVersion = message.contentVersion + 1

@@ -441,7 +441,7 @@ class ChatScreenTest {
 
         compose.onNodeWithTag("message_m1").assertIsDisplayed()
         compose.onNodeWithTag("ai_result_m1").assertDoesNotExist()
-        compose.onNodeWithText("整理结果（模拟）").assertDoesNotExist()
+        compose.onNodeWithText("历史结果").assertDoesNotExist()
     }
 
     @Test
@@ -492,7 +492,7 @@ class ChatScreenTest {
         }
         compose.onNodeWithTag("organization_results").assertIsDisplayed()
         compose.onNodeWithTag("organization_document").assertIsDisplayed()
-        compose.onNodeWithText("模拟结果").assertIsDisplayed()
+        compose.onNodeWithText("历史结果").assertIsDisplayed()
         compose.onNodeWithTag("export_md").performClick()
         assertEquals(DocumentExportFormat.Markdown, exported)
         compose.onNodeWithTag("export_pdf").assertIsDisplayed()
@@ -615,7 +615,7 @@ class ChatScreenTest {
 
     @Test
     fun assistantMessageMenuHidesEdit() {
-        val assistant = MessageRecord("m2", "s1", "assistant", "AI 回复", createdAt = 1)
+        val assistant = MessageRecord("m2", "s1", "assistant", "助手回复", createdAt = 1)
         compose.setContent {
             MaterialTheme {
                 ChatScreen(state.copy(messages = state.messages + assistant), ChatActions())

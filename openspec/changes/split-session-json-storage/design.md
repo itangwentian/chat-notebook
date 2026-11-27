@@ -9,7 +9,7 @@
 - 直接归属：`SessionRecord`、`MessageRecord.sessionId`、`SessionOrganizationState`、`MessageMergeRecord`、`SessionDocumentRecord`；
 - 通过 messageId 归属：`AiResultRecord`、`EditRecord`、`QuoteRecord`、`ReactionRecord`；
 - `MergeRelationRecord` 按 `targetSessionId` 归属目标对话，来源对话可以不同；
-- `LlmConfigRecord` 是全局数据，不属于任何对话。
+- 旧服务配置记录 `LlmConfigRecord` 是全局数据，不属于任何对话。
 
 `merge_relations` 没有外键，删除来源对话不会破坏索引；`session_documents` 有会话外键。
 
@@ -20,7 +20,7 @@
 同一目录下：
 
 - `session-<sessionId>-<20 位 generation>.json`：一个未删除对话的完整数据；
-- `settings-<20 位 generation>.json`：全局模型配置；
+- `settings-<20 位 generation>.json`：全局服务配置；
 - `records-*.json`：仅旧版本遗留，用于迁移。
 
 generation 单调递增，用于区分同一对话的多个版本；会话 ID 原样写入文件名，解析时以最后一个 `-<20 位数字>.json` 为 generation，其余为 sessionId。
@@ -31,11 +31,11 @@ generation 单调递增，用于区分同一对话的多个版本；会话 ID �
 
 ```text
 schemaVersion / generation / createdAt / sessionId / payload / sha256
-payload = session, messages, aiResults, editHistory, quotes, reactions,
+payload = session, messages, 旧整理结果, editHistory, quotes, reactions,
           mergeRelations, organizationState, messageMerges, sessionDocument
 ```
 
-设置文件 envelope 复用 `schemaVersion / generation / createdAt / payload(llmConfigs) / sha256`。校验和覆盖 generation、createdAt 与 payload 的序列化内容。解码时校验 sessionId 一致、消息归属、派生记录引用、合并目标与整理文档归属；旧 `SnapshotCodec` 原样保留。
+设置文件 envelope 复用 `schemaVersion / generation / createdAt / payload(旧配置列表) / sha256`。校验和覆盖 generation、createdAt 与 payload 的序列化内容。解码时校验 sessionId 一致、消息归属、派生记录引用、合并目标与整理文档归属；旧 `SnapshotCodec` 原样保留。
 
 ### 3. 写入
 
@@ -44,7 +44,7 @@ payload = session, messages, aiResults, editHistory, quotes, reactions,
 1. 校验会话 ID 唯一、消息与派生记录引用有效；
 2. 对新增或内容变化的会话，以 `generation + 1` 编码写入新的会话文件，`SnapshotStore.write` 回读校验；
 3. 新文件写成功后删除该会话旧 generation 文件（删除失败仅留垃圾文件，不影响正确性）；
-4. 只写设置文件当 `llmConfigs` 变化或尚无设置文件；
+4. 只写设置文件当 `旧配置列表` 变化或尚无设置文件；
 5. 已删除或不再存在的会话删除其文件；
 6. 全部成功后再更新内存 payload、generation 与 Room 索引；任一写入失败则保持旧状态，已写出的新文件留待下次恢复选取。
 

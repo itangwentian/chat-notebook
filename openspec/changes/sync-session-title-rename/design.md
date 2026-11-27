@@ -2,7 +2,7 @@
 
 ## Context
 
-局域网同步用 `SyncConversation` 投影对话，字段包含 `id`、`title`、`createdAt`、`updatedAt`、消息、编辑历史、引用、表情、合并关系与整理文档。`SessionFilePayload.syncContent()` 在决定是否推进同步修订时只归一化打开时间、处理状态、AI 请求、中间结果和整理阅读状态，`title` 与 `updatedAt` 参与比较。`SyncConversation.digest()` 对含 `title` 的规范序列化做 SHA-256，因此标题变化会改变摘要。
+局域网同步用 `SyncConversation` 投影对话，字段包含 `id`、`title`、`createdAt`、`updatedAt`、消息、编辑历史、引用、表情、合并关系与整理文档。`SessionFilePayload.syncContent()` 在决定是否推进同步修订时只归一化打开时间、处理状态、整理请求、中间结果和整理阅读状态，`title` 与 `updatedAt` 参与比较。`SyncConversation.digest()` 对含 `title` 的规范序列化做 SHA-256，因此标题变化会改变摘要。
 
 `ChatSessionService.rename` 通过 `RecordRepository.update` 写入 `title` 与 `updatedAt`，写入提交时按设备分量推进同步版本。接收端 `SyncLibrary.receive` 把远端 `SyncConversation.title` 映射为 `SessionRecord.title`，提交后重建 Room；`ChatViewModel` 订阅会话流并更新 `sessions` 与 `activeTitle`。
 

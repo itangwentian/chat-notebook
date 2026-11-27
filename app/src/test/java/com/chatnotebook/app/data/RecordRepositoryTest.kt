@@ -199,7 +199,7 @@ class RecordRepositoryTest {
             sessions = listOf(session("a"), session("b")),
             messages = listOf(message("one", "a"), message("two", "b")),
             llmConfigs = listOf(
-                LlmConfigRecord("c", "模型", "openai", baseUrl = "https://example.com", model = "m", createdAt = 1, updatedAt = 1),
+                LlmConfigRecord("c", "本地配置", "local", baseUrl = "https://example.com", model = "m", createdAt = 1, updatedAt = 1),
             ),
         )
         store.files["records-00000000000000000005-abc.json"] = SnapshotCodec().encode(5, 10, legacy)

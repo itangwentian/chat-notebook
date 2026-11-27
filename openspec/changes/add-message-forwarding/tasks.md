@@ -2,7 +2,7 @@
 
 ## 1. 数据与仓库
 
-- [x] 1.1 Goal：转发写入；Requirements：`forwardMessages` 校验源/目标、按时间顺序复制角色与可见正文、生成新 id 与当前时间、更新目标 `updatedAt`、源不变；Constraints：不复制引用/表情/格式/AI 结果，失败不部分写入；Acceptance Criteria：服务与 ViewModel 测试覆盖成功、目标等于源、选中消息失效。
+- [x] 1.1 Goal：转发写入；Requirements：`forwardMessages` 校验源/目标、按时间顺序复制角色与可见正文、生成新 id 与当前时间、更新目标 `updatedAt`、源不变；Constraints：不复制引用/表情/格式/整理结果，失败不部分写入；Acceptance Criteria：服务与 ViewModel 测试覆盖成功、目标等于源、选中消息失效。
 - [x] 1.2 Goal：仓库接线；Requirements：`ChatRepository` 暴露转发方法；Constraints：不改变快照与 Room 结构；Acceptance Criteria：编译与测试通过。
 
 ## 2. 多选入口与目标选择

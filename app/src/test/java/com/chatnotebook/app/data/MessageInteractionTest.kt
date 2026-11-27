@@ -204,11 +204,11 @@ class MessageInteractionTest {
         records.update { payload ->
             payload.copy(messages = payload.messages + MessageRecord(
                 id = "assistant-message", sessionId = sessionId, role = "assistant",
-                rawContent = "这是模型回复", createdAt = 9_000_000_000_000,
+                rawContent = "这是助手回复", createdAt = 9_000_000_000_000,
             ))
         }
         val mergedId = chat.mergeMessages(sessionId, setOf(messageId, "assistant-message"))
-        assertEquals("明天十点开会\nAI：这是模型回复",
+        assertEquals("明天十点开会\n助手：这是助手回复",
             records.current().messages.single { it.id == mergedId }.currentContent)
     }
 

@@ -2,13 +2,13 @@
 
 ## Context
 
-动机见 proposal.md。当前输入栏在 `ChatScreen.kt` 的 `Composer` 中：左侧附件图标调用为空且禁用，右侧在输入为空时显示禁用语音按钮、有文字时显示发送按钮。消息模型 `MessageRecord` 只有文本字段；写入通过 `RecordRepository.update` 按对话对比差异，只重写变化的 `session-<sessionId>-<generation>.json`，`SafSnapshotStore` 在所选目录写入并回读校验字节。Room schema 当前为 v7（含 `session_documents`），`MessageEntity` 已用 `formatSegmentsJson` 存文本分段格式。AI 整理只消费 `currentContent` 文本。
+动机见 proposal.md。当前输入栏在 `ChatScreen.kt` 的 `Composer` 中：左侧附件图标调用为空且禁用，右侧在输入为空时显示禁用语音按钮、有文字时显示发送按钮。消息模型 `MessageRecord` 只有文本字段；写入通过 `RecordRepository.update` 按对话对比差异，只重写变化的 `session-<sessionId>-<generation>.json`，`SafSnapshotStore` 在所选目录写入并回读校验字节。Room schema 当前为 v7（含 `session_documents`），`MessageEntity` 已用 `formatSegmentsJson` 存文本分段格式。会话整理只消费 `currentContent` 文本。
 
 ## Goals / Non-Goals
 
 **Goals:** 在既有单快照事务与 SAF 目录模型上补齐图片、语音附件；附件与文字合并为一个气泡展示；旧快照、旧数据库与现有测试保持可用；录音与播放可脱离网络验证。
 
-**Non-Goals:** 不做语音识别、转写或字幕；不做图片编辑、压缩策略调优与云端同步；附件不进入 AI 整理输入，也不参与消息合并的文本分段；不引入图片加载第三方库。
+**Non-Goals:** 不做语音识别、转写或字幕；不做图片编辑、压缩策略调优与云端同步；附件不进入会话整理输入，也不参与消息合并的文本分段；不引入图片加载第三方库。
 
 ## Decisions
 
@@ -38,7 +38,7 @@ Room：`MessageEntity` 增加 `attachmentsJson`（默认空串），数据库升
 
 ### 6. 输入栏与气泡
 
-输入栏保持两层圆角结构：文字区上方新增草稿附件条（横向缩略图 + 删除角标，语音显示为带时长的条目），录音进行中时以录音状态条替换草稿区；有附件时右侧发送按钮常驻可用（文字为空也可发送）。附件图标和语音按钮在未录音时启用。气泡内布局为文字（可为空）→ 图片缩略图行 → 语音条目；用户消息右对齐、AI 消息左对齐的既有规则不变。现有 `formatTextStyle`、引用、历史、复制等交互保持：复制只复制文字；编辑只改文字且保留附件；合并仅合并文字，忽略附件。
+输入栏保持两层圆角结构：文字区上方新增草稿附件条（横向缩略图 + 删除角标，语音显示为带时长的条目），录音进行中时以录音状态条替换草稿区；有附件时右侧发送按钮常驻可用（文字为空也可发送）。附件图标和语音按钮在未录音时启用。气泡内布局为文字（可为空）→ 图片缩略图行 → 语音条目；用户消息右对齐、助手消息左对齐的既有规则不变。现有 `formatTextStyle`、引用、历史、复制等交互保持：复制只复制文字；编辑只改文字且保留附件；合并仅合并文字，忽略附件。
 
 ## Risks / Trade-offs
 

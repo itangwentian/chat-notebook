@@ -2,7 +2,7 @@
 
 ## Context
 
-`MainActivity` 用 Compose 状态切换根级界面：隐私同意页、设置页（`settingsOpen`）、整理结果页（`resultSessionId`）和对话界面。当前没有注册任何返回拦截，因此非对话界面按返回会走 Activity 默认行为并结束应用。设置页内部还有模型配置表单与法律文档两层局部状态，均由 `SettingsScreen` 自己持有。
+`MainActivity` 用 Compose 状态切换根级界面：隐私同意页、设置页（`settingsOpen`）、整理结果页（`resultSessionId`）和对话界面。当前没有注册任何返回拦截，因此非对话界面按返回会走 Activity 默认行为并结束应用。设置页内部还有服务配置表单与法律文档两层局部状态，均由 `SettingsScreen` 自己持有。
 
 对话界面内的会话抽屉、对话框、底部面板和图片预览由 Material 3 / Compose 组件自身处理返回关闭。Android 系统返回键与返回手势在 Compose 中统一通过 `BackHandler` 接入。
 
@@ -37,7 +37,7 @@
 `SettingsScreen` 注册自己的 `BackHandler`：
 
 - 法律文档打开时，返回只关闭文档并回到设置列表。
-- 模型配置表单打开时，返回只关闭表单并回到设置列表。
+- 服务配置表单打开时，返回只关闭表单并回到设置列表。
 - 两者都未打开时不注册，让根级处理器关闭设置页。
 
 Compose 中后组合的 `BackHandler` 优先，`SettingsRoute` 位于 `MainActivity` 根级处理器之后，因此内层处理器优先，符合“逐级返回”。

@@ -58,7 +58,7 @@ const val REMINDER_FIRED = "fired"
 const val REMINDER_CANCELLED = "cancelled"
 val REMINDER_STATUSES: Set<String> = setOf(REMINDER_SCHEDULED, REMINDER_FIRED, REMINDER_CANCELLED)
 
-/** 旧版本 AI 结果状态，仅用于读取既有记录时保持兼容。 */
+/** 旧版本整理结果状态，仅用于读取既有记录时保持兼容。 */
 const val AI_RESULT_VALID = "valid"
 const val AI_RESULT_EXPIRED = "expired"
 

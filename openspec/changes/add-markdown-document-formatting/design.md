@@ -16,11 +16,11 @@
 - 颜色使用 `<span style="color:#RRGGBB">…</span>`，与界面颜色一致：红 `#C62828`、黄 `#B26A00`、绿 `#2E7D32`；
 - 样式与颜色可叠加，颜色包裹样式标记。
 
-`ChatRepository.organizeSession` 从当前记录的 `reactions` 中筛出可解析为 `BubbleFormat` 的项并传入文档服务；AI 与本地整理都使用带格式的 transcript。
+`ChatRepository.organizeSession` 从当前记录的 `reactions` 中筛出可解析为 `BubbleFormat` 的项并传入文档服务；本地整理都使用带格式的 transcript。
 
 ### 2. 角色标签
 
-本地文档与 transcript 中，用户消息只保留时间，不输出“用户”；助手输出“助手”，系统输出“系统”。AI 提示词同步要求“用户发言不标注角色”。
+本地文档与 transcript 中，用户消息只保留时间，不输出“用户”；助手输出“助手”，系统输出“系统”。整理约束同步要求“用户发言不标注角色”。
 
 ### 3. Markdown 渲染
 
@@ -41,6 +41,6 @@ Markdown 文件直接写入原始 Markdown 源码，不做二次转义。
 ## Risks / Trade-offs
 
 - [颜色依赖内联 HTML] → 标准 Markdown 无颜色语法；多数编辑器支持内联 span，PDF/PNG 由自有渲染器保证生效。
-- [Markdown 解析为轻量实现] → 仅覆盖本项目生成与 AI 常见语法，不追求完整 CommonMark；无法识别的标记按原文显示。
-- [AI 输出可能不完全遵循格式] → 提示词与 transcript 同时提供格式；本地整理路径完全可控。
+- [Markdown 解析为轻量实现] → 仅覆盖本项目生成与常见 Markdown 语法，不追求完整 CommonMark；无法识别的标记按原文显示。
+- [整理输出可能不完全遵循格式] → 提示词与 transcript 同时提供格式；本地整理路径完全可控。
 - [旧文档不回溯] → 仅重新整理后生成的新文档带格式，避免修改历史内容。

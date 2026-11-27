@@ -10,7 +10,7 @@
 - 用户发言 MUST NOT 显示“用户”角色标签；助手与系统仍保留“助手”“系统”标签。
 - 整理结果预览 SHALL 按 Markdown 渲染标题、引用、列表、粗体、斜体、删除线与颜色，而不是显示原始标记。
 - 导出的 PDF 与 PNG SHALL 渲染 Markdown 样式；导出的 Markdown 文件保持 Markdown 源码，供支持 Markdown 的编辑器渲染。
-- AI 整理提示词 SHALL 要求保留输入中的 Markdown 格式，并禁止给用户发言添加“用户”标签。
+- 会话整理提示词 SHALL 要求保留输入中的 Markdown 格式，并禁止给用户发言添加“用户”标签。
 
 ## Capabilities
 

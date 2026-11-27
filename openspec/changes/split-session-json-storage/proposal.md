@@ -6,8 +6,8 @@
 
 ## What Changes
 
-- 每个未删除的对话 SHALL 对应一个 `session-<sessionId>-<20 位 generation>.json`，文件内包含该对话的会话信息、全部消息、AI 结果、编辑历史、引用、气泡格式、以该对话为目标的合并关系、整理状态、消息合并与整理文档。
-- 全局模型配置 SHALL 单独写入 `settings-<generation>.json`，不再随每个对话重复保存。
+- 每个未删除的对话 SHALL 对应一个 `session-<sessionId>-<20 位 generation>.json`，文件内包含该对话的会话信息、全部消息、整理结果、编辑历史、引用、气泡格式、以该对话为目标的合并关系、整理状态、消息合并与整理文档。
+- 全局服务配置 SHALL 单独写入 `settings-<generation>.json`，不再随每个对话重复保存。
 - 写入 SHALL 先创建新 generation 文件并回读校验，成功后才删除同对话的旧 generation 文件；写入失败时保留旧文件与内存索引。
 - 恢复 SHALL 按对话聚合最新有效文件；某个对话的最新文件损坏时回退到该对话的上一有效 generation；只有存在候选文件却无任何有效数据时才报错，且 MUST NOT 修改现有文件。
 - 标记删除的对话 SHALL 不再写入，并删除其已有文件；重启后该对话不再恢复。

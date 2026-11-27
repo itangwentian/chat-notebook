@@ -108,9 +108,9 @@ class SessionDocumentBlocksTest {
         assertEquals(listOf("a2"), images[0].attachments.map { it.id })
     }
 
-    @Test fun modelDocumentAppendsImagesInTimeOrder() {
+    @Test fun nonLocalDocumentAppendsImagesInTimeOrder() {
         val blocks = SessionDocumentBlocks.build(
-            document("# 工作\n\n模型整理的正文", snapshot = "gpt-4o"),
+            document("# 工作\n\n整理后的正文", snapshot = "legacy"),
             listOf(
                 message("m2", "第二条", 1_700_000_060_000, listOf(image("b2"))),
                 message("m1", "第一条", 1_700_000_000_000, listOf(image("b1"))),

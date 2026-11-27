@@ -459,7 +459,7 @@ class RecordRepository(
         val messageIds = payload.messages.map { it.id }
         require(messageIds.distinct().size == messageIds.size) { "Duplicate message id" }
         require(payload.messages.all { it.sessionId in sessionIds }) { "Message session missing" }
-        require(payload.aiResults.all { it.messageId in messageIds }) { "AI result message missing" }
+        require(payload.aiResults.all { it.messageId in messageIds }) { "Legacy result message missing" }
         require(payload.editHistory.all { it.messageId in messageIds }) { "Edit history message missing" }
         require(payload.quotes.all { it.messageId in messageIds }) { "Quote message missing" }
         require(payload.reactions.all { it.messageId in messageIds }) { "Reaction message missing" }

@@ -3,7 +3,7 @@ package com.chatnotebook.app.security
 import android.content.Context
 import java.security.KeyStore
 
-/** 清除历史版本留下的模型配置、API Key 与删除墓碑；可重复执行。 */
+/** 清除历史版本留下的服务配置、凭据与删除墓碑；可重复执行。 */
 object LegacyLlmCleanup {
     fun run(context: Context) {
         val appContext = context.applicationContext

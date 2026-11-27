@@ -93,14 +93,14 @@ class SettingsScreenTest {
     }
 
     @Test
-    fun settingsNoLongerExposeModelConfiguration() {
+    fun settingsNoLongerExposeServiceConfiguration() {
         compose.setContent {
             MaterialTheme { SettingsScreen() }
         }
 
-        compose.onNodeWithText("模型设置").assertDoesNotExist()
-        compose.onNodeWithText("API Key").assertDoesNotExist()
-        compose.onNodeWithText("新增模型").assertDoesNotExist()
+        compose.onNodeWithText("服务设置").assertDoesNotExist()
+        compose.onNodeWithText("凭据").assertDoesNotExist()
+        compose.onNodeWithText("新增服务").assertDoesNotExist()
         compose.onNodeWithTag("about_section").assertExists()
     }
 }

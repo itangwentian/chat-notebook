@@ -1537,7 +1537,7 @@ fun OrganizationResultsScreen(
                     )
                     if (document.isMock) {
                         Text(
-                            text = "模拟结果",
+                            text = "历史结果",
                             style = MaterialTheme.typography.labelSmall,
                             color = MaterialTheme.colorScheme.tertiary,
                             modifier = Modifier.padding(top = 2.dp),

@@ -8,17 +8,17 @@
 
 ### Requirement: 每个对话一个文件
 
-每个未删除对话 SHALL 持久化为独立文件 `session-<sessionId>-<20 位 generation>.json`。该文件 SHALL 包含该对话的会话信息、全部消息、AI 结果、编辑历史、引用、气泡格式、以该对话为目标的合并关系、整理状态、消息合并记录与整理文档。系统 MUST NOT 再写出包含全部对话的整库快照文件。
+每个未删除对话 SHALL 持久化为独立文件 `session-<sessionId>-<20 位 generation>.json`。该文件 SHALL 包含该对话的会话信息、全部消息、整理结果、编辑历史、引用、气泡格式、以该对话为目标的合并关系、整理状态、消息合并记录与整理文档。系统 MUST NOT 再写出包含全部对话的整库快照文件。
 
-全局模型配置 SHALL 保存在独立的 `settings-<generation>.json` 中，MUST NOT 复制到每个对话文件。
+全局服务配置 SHALL 保存在独立的 `settings-<generation>.json` 中，MUST NOT 复制到每个对话文件。
 
 #### Scenario: 两个对话产生两个文件
 - **WHEN** 用户创建两个对话并分别发送消息
 - **THEN** 记录目录中出现两个以各自 sessionId 命名的会话 JSON，每次保存只更新发生变化的对话文件
 
 #### Scenario: 全局设置不重复保存
-- **WHEN** 用户保存模型配置
-- **THEN** 配置写入设置文件，各会话文件不包含模型配置副本
+- **WHEN** 用户保存服务配置
+- **THEN** 配置写入设置文件，各会话文件不包含服务配置副本
 
 ### Requirement: 逐对话原子写入
 

@@ -34,14 +34,10 @@
     <string name="send">发送</string>
     <string name="voice">语音</string>
     <string name="image">图片</string>
-    <string name="settings_placeholder">模型配置与凭据管理将在后续版本提供。</string>
+    
     <string name="back">返回</string>
     <string name="today">今天</string>
     <string name="yesterday">昨天</string>
-    <string name="ai_result">整理结果</string>
-    <string name="ai_result_mock">整理结果（模拟）</string>
-    <string name="ai_processing">正在整理…</string>
-    <string name="ai_failed">整理失败</string>
     <string name="retry">重试</string>
     <string name="keywords">关键词：%1$s</string>
     <string name="todos_label">待办</string>

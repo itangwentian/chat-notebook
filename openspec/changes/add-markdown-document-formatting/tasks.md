@@ -3,11 +3,11 @@
 ## 1. 气泡格式
 
 - [x] 1.1 Goal：格式到 Markdown；Requirements：粗体/斜体/删除线/颜色映射，合并消息分段格式优先；Constraints：不改变气泡格式存储；Acceptance Criteria：单元测试覆盖四种格式与分段。
-- [x] 1.2 Goal：整理流程传入格式；Requirements：从 `reactions` 构建消息格式映射并传给本地与 AI 整理；Constraints：只读取当前记录的格式；Acceptance Criteria：重新整理后文档包含格式。
+- [x] 1.2 Goal：整理流程传入格式；Requirements：从 `reactions` 构建消息格式映射并传给本地整理；Constraints：只读取当前记录的格式；Acceptance Criteria：重新整理后文档包含格式。
 
 ## 2. 角色标签
 
-- [x] 2.1 Goal：隐藏“用户”；Requirements：本地文档与 transcript 不输出“用户”，助手/系统保留；AI 提示词同步约束；Constraints：时间信息保留；Acceptance Criteria：测试断言无“用户”。
+- [x] 2.1 Goal：隐藏“用户”；Requirements：本地文档与 transcript 不输出“用户”，助手/系统保留；整理文档同步约束；Constraints：时间信息保留；Acceptance Criteria：测试断言无“用户”。
 
 ## 3. Markdown 渲染
 
