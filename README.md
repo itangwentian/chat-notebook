@@ -10,12 +10,12 @@
 
 | 对话列表 | 聊天记录 |
 | :---: | :---: |
-| ![对话列表](docs/screenshots/sessions.png) | ![聊天记录](docs/screenshots/chat.png) |
+| ![对话列表](docs/screenshots/sessions.png) | ![聊天记录](docs/screenshots/chat.jpg) |
 | 多会话列表，红点提示存在新的整理结果 | 长按消息可引用、编辑、设置提醒或删除 |
 
 | 长按对话 | 整理结果 |
 | :---: | :---: |
-| ![长按对话](docs/screenshots/session-menu.png) | ![整理结果](docs/screenshots/organize-result.png) |
+| ![长按对话](docs/screenshots/session-menu.png) | ![整理结果](docs/screenshots/organize-result.jpg) |
 | 重命名、删除、导出 | 进入即整理，可查看并导出 MD / PDF / PNG |
 
 | 提醒设置 | |
