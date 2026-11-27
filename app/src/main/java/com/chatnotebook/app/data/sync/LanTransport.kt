@@ -20,9 +20,13 @@ import java.net.Socket
 import java.net.SocketTimeoutException
 import java.util.UUID
 import java.util.concurrent.ConcurrentHashMap
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.channels.awaitClose
 import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.callbackFlow
 import kotlinx.coroutines.flow.collectLatest
@@ -36,6 +40,9 @@ import kotlinx.coroutines.withContext
 
 private const val SERVICE_TYPE = "_chat-notebook._tcp."
 private const val TIMEOUT_MS = 8_000
+
+internal const val SESSION_RETRY_MIN_MS = 500L
+internal const val SESSION_RETRY_MAX_MS = 10_000L
 
 internal data class LanInterface(val network: Network, val address: LinkAddress) {
     fun canReach(peer: InetAddress): Boolean =
@@ -54,16 +61,36 @@ internal fun sameSubnet(local: ByteArray, remote: ByteArray, prefixLength: Int):
         (0xff shl (8 - remainingBits))) == 0
 }
 
+/**
+ * 在条件满足时维持一次网络会话。会话因服务发布、发现或监听失败而结束时，
+ * 按退避重建，避免一次瞬时错误让同步或配对永久停止。
+ */
 @OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class)
 internal fun <T> foregroundLanSessions(
     enabled: Flow<Boolean>,
     foreground: Flow<Boolean>,
     networks: Flow<T?>,
+    onFailure: (Throwable) -> Unit = {},
     serve: suspend (T) -> Unit,
 ): Flow<Unit> = combine(enabled, foreground, networks) { requested, active, network ->
     network.takeIf { requested && active }
 }.distinctUntilChanged().transformLatest { network ->
-    if (network != null) serve(network)
+    if (network == null) return@transformLatest
+    var backoff = SESSION_RETRY_MIN_MS
+    while (true) {
+        currentCoroutineContext().ensureActive()
+        val failed = try {
+            serve(network)
+            false
+        } catch (error: CancellationException) {
+            throw error
+        } catch (error: Exception) {
+            onFailure(error)
+            true
+        }
+        delay(if (failed) backoff else SESSION_RETRY_MIN_MS)
+        backoff = if (failed) minOf(backoff * 2, SESSION_RETRY_MAX_MS) else SESSION_RETRY_MIN_MS
+    }
 }
 
 internal class LanTransport(private val context: Context) {

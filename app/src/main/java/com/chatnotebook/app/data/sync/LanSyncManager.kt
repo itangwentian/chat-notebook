@@ -211,41 +211,46 @@ internal class LanSyncManager(
     }
 
     private suspend fun runPairing(store: Storage, handshaking: Pairing) {
-        val identity = loadIdentity() ?: return
-        val transport = LanTransport(context)
-        val onNetwork = MutableStateFlow(true)
-        foregroundLanSessions(onNetwork, foreground, transport.interfaces()) { lan ->
-            var backoff = 500L
-            while (true) {
-                currentCoroutineContext().ensureActive()
-                message("等待另一台设备")
-                guarded("无法启动局域网同步") {
+        var backoff = SESSION_RETRY_MIN_MS
+        while (true) {
+            currentCoroutineContext().ensureActive()
+            val identity = loadIdentity()
+            val ended = identity != null && guarded("配对连接失败") {
+                val transport = LanTransport(context)
+                foregroundLanSessions(
+                    MutableStateFlow(true), foreground, transport.interfaces(),
+                    onFailure = { failure("配对连接失败", it) },
+                ) { lan ->
+                    message("等待另一台设备")
                     when (handshaking) {
                         is Pairing.Show -> host(transport, lan, store, identity, handshaking.ticket)
                         is Pairing.Scan -> join(transport, lan, store, identity, handshaking.offer)
                     }
-                }
-                delay(backoff)
-                backoff = minOf(backoff * 2, 10_000L)
+                }.collect {}
             }
-        }.collect {}
+            backoff = if (ended) SESSION_RETRY_MIN_MS else minOf(backoff * 2, SESSION_RETRY_MAX_MS)
+            delay(backoff)
+        }
     }
 
     private suspend fun syncPeer(store: Storage, authorized: LanTrust) {
-        val identity = loadIdentity() ?: return
-        if (trust.value.none { it.fingerprint == authorized.fingerprint }) return
-        store.records.startSyncTracking(identity.fingerprint)
-        val transport = LanTransport(context)
-        val onNetwork = MutableStateFlow(true)
-        foregroundLanSessions(onNetwork, foreground, transport.interfaces()) { lan ->
-            var backoff = 500L
-            while (true) {
-                currentCoroutineContext().ensureActive()
-                guarded("无法启动局域网同步") { synchronize(transport, lan, store, identity, authorized) }
-                delay(backoff)
-                backoff = minOf(backoff * 2, 10_000L)
+        var backoff = SESSION_RETRY_MIN_MS
+        while (trust.value.any { it.fingerprint == authorized.fingerprint }) {
+            currentCoroutineContext().ensureActive()
+            val identity = loadIdentity()
+            val ended = identity != null && guarded("局域网同步失败") {
+                store.records.startSyncTracking(identity.fingerprint)
+                val transport = LanTransport(context)
+                foregroundLanSessions(
+                    MutableStateFlow(true), foreground, transport.interfaces(),
+                    onFailure = { failure("局域网同步失败", it) },
+                ) { lan ->
+                    synchronize(transport, lan, store, identity, authorized)
+                }.collect {}
             }
-        }.collect {}
+            backoff = if (ended) SESSION_RETRY_MIN_MS else minOf(backoff * 2, SESSION_RETRY_MAX_MS)
+            delay(backoff)
+        }
     }
 
     private suspend fun loadIdentity(): LanIdentity? = try {
@@ -401,13 +406,17 @@ internal class LanSyncManager(
         scope.launch { PersistentChatRepository.shared(context).rescheduleReminders() }
     }
 
+    private fun failure(fallback: String, error: Throwable) {
+        message("$fallback：${error.message ?: "请检查设备、网络和记录目录"}")
+    }
+
     private suspend fun guarded(fallback: String, block: suspend () -> Unit): Boolean = try {
         block()
         true
     } catch (error: CancellationException) {
         throw error
     } catch (error: Exception) {
-        message("$fallback：${error.message ?: "请检查设备、网络和记录目录"}")
+        failure(fallback, error)
         false
     }
 }

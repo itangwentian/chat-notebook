@@ -1,10 +1,12 @@
 package com.chatnotebook.app.data.sync
 
+import java.io.IOException
 import java.net.InetAddress
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.awaitCancellation
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.test.advanceTimeBy
 import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
@@ -43,6 +45,28 @@ class LanTransportTest {
         runCurrent()
         assertEquals(listOf("open wifi", "close wifi", "open ethernet", "close ethernet",
             "open ethernet", "close ethernet", "open wifi", "close wifi"), events)
+        job.cancel()
+    }
+
+    @Test fun failedSessionIsRebuiltInsteadOfEndingSync() = runTest {
+        val enabled = MutableStateFlow(true)
+        val foreground = MutableStateFlow(true)
+        val network = MutableStateFlow<String?>("wifi")
+        val failures = mutableListOf<String?>()
+        var attempts = 0
+        val job = launch {
+            foregroundLanSessions(enabled, foreground, network, onFailure = { failures += it.message }) {
+                attempts++
+                if (attempts == 1) throw IOException("无法发布局域网同步服务 (3)")
+                awaitCancellation()
+            }.collect {}
+        }
+        runCurrent()
+        assertEquals(1, attempts)
+        assertEquals(listOf("无法发布局域网同步服务 (3)"), failures)
+        advanceTimeBy(SESSION_RETRY_MIN_MS + 1)
+        runCurrent()
+        assertEquals(2, attempts)
         job.cancel()
     }
 
