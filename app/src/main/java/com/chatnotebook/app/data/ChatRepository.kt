@@ -5,7 +5,6 @@ import android.content.Intent
 import android.net.Uri
 import android.util.Log
 import android.webkit.MimeTypeMap
-import androidx.documentfile.provider.DocumentFile
 import androidx.room.Room
 import com.chatnotebook.app.data.sync.LanSyncManager
 import com.chatnotebook.app.reminder.LocalReminderParser
@@ -576,10 +575,10 @@ class PersistentChatRepository(
     private suspend fun open(uri: Uri) {
         val previous = prefs.getString(KEY_TREE_URI, null)
         if (previous != null && previous != uri.toString()) lanSync.switchDirectory() else lanSync.detachDirectory()
-        val directoryEmpty = isDirectoryEmpty(uri)
         val store = SafSnapshotStore(appContext, uri)
         val repository = RecordRepository(store, database)
         repository.restore()
+        val hasExistingRecords = repository.hasExistingRecordFiles
         repository.ensureWritable()
         LegacyLlmCleanup.run(appContext)
         if (repository.current().llmConfigs.isNotEmpty()) {
@@ -589,16 +588,11 @@ class PersistentChatRepository(
         chat = service
         records = repository
         attachmentStore = SafAttachmentStore(appContext, uri).also { it.protectExistingMedia() }
-        if (directoryEmpty) service.seedDefaultConversations()
+        if (!hasExistingRecords) service.seedDefaultConversations()
         publishUnread(repository.current())
         _directoryReady.value = true
         lanSync.directory(repository, attachmentStore)
     }
-
-    /** 目录在任何写入之前是否为空；无法读取时按非空处理，避免误建默认对话。 */
-    private fun isDirectoryEmpty(uri: Uri): Boolean = runCatching {
-        DocumentFile.fromTreeUri(appContext, uri)?.listFiles()?.isEmpty() == true
-    }.getOrDefault(false)
 
     private fun chat(): ChatSessionService =
         chat ?: throw IllegalStateException("请先选择记录目录")

@@ -186,6 +186,17 @@ class ChatSessionServiceTest {
         assertEquals(listOf("已有对话"), repository.current().sessions.map { it.title })
     }
 
+    @Test fun seedingSkipsWhenOnlyDeletedConversationsRemain() = runBlocking {
+        val repository = RecordRepository(MemorySnapshotStore(), newDatabase())
+        repository.ensureWritable()
+        val service = ChatSessionService(repository, newId = { "deleted" })
+        service.create("已删除对话")
+        service.delete("deleted") {}
+
+        assertEquals(null, service.seedDefaultConversations())
+        assertTrue(repository.current().sessions.all { it.isDeleted })
+    }
+
     private fun image(name: String) =
         MessageAttachment(name, "image", "attachments/$name.jpg", "image/jpeg", 1, createdAt = 1)
 

@@ -35,9 +35,9 @@ class ChatSessionService(
         return id
     }
 
-    /** 记录为空时创建两个默认对话并选中“草稿”；已有对话时返回 null。 */
+    /** 记录为空时创建两个默认对话并选中“草稿”；已有任何对话（含已删除）时返回 null。 */
     suspend fun seedDefaultConversations(): String? {
-        if (records.current().sessions.any { !it.isDeleted }) return null
+        if (records.current().sessions.isNotEmpty()) return null
         val importantId = newId()
         val draftId = newId()
         val time = now()

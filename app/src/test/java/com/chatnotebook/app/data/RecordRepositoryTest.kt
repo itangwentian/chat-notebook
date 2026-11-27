@@ -21,6 +21,7 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.runBlocking
 import org.junit.After
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotEquals
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertThrows
@@ -479,6 +480,43 @@ class RecordRepositoryTest {
         assertNull(r1.messageId)
         assertNull(r1.content)
         assertEquals("a", r1.sessionTitle)
+    }
+
+    @Test fun emptyDirectoryReportsNoExistingRecordFiles() = runBlocking {
+        repository.restore()
+
+        assertFalse(repository.hasExistingRecordFiles)
+    }
+
+    @Test fun settingsFileAloneCountsAsExistingRecords() = runBlocking {
+        repository.initializeEmpty()
+        assertTrue(store.files.keys.any { it.startsWith("settings-") })
+
+        val reopened = RecordRepository(store, db)
+        reopened.restore()
+
+        assertTrue(reopened.hasExistingRecordFiles)
+    }
+
+    @Test fun sessionFilesCountAsExistingRecordsAfterRestart() = runBlocking {
+        repository.initializeEmpty()
+        repository.update { it.copy(sessions = listOf(session("a"))) }
+
+        val reopened = RecordRepository(store, db)
+        reopened.restore()
+
+        assertTrue(reopened.hasExistingRecordFiles)
+    }
+
+    @Test fun deletingAllSessionsKeepsExistingRecordFlag() = runBlocking {
+        repository.initializeEmpty()
+        repository.update { it.copy(sessions = listOf(session("a"))) }
+        repository.update { it.copy(sessions = emptyList()) }
+
+        val reopened = RecordRepository(store, db)
+        reopened.restore()
+
+        assertTrue(reopened.hasExistingRecordFiles)
     }
 
     private fun session(id: String) = SessionRecord(id, id, 100, 100)

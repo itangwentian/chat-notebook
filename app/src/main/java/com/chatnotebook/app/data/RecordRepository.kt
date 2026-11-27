@@ -37,6 +37,10 @@ class RecordRepository(
     private var syncState: SyncDirectoryState? = null
     private val warning = MutableStateFlow(false)
     val recoveredFromOlderSnapshot: StateFlow<Boolean> = warning
+    private var restoredExistingRecords = false
+
+    /** 最近一次 restore 时，目录中是否已存在本应用的记录文件（会话、设置、同步日志或旧版笔记）。 */
+    internal val hasExistingRecordFiles: Boolean get() = restoredExistingRecords
 
     /** Rebuilds the disposable Room index from the newest valid file of every conversation. */
     suspend fun restore(): RecordPayload = withContext(io) {
@@ -48,6 +52,8 @@ class RecordRepository(
             val settings = names.filter { restoredSync == null || it == restoredSync.settingsFile }
                 .mapNotNull(::parseSettingsFile)
             val legacy = names.filter(::isLegacyFile)
+            restoredExistingRecords = sessions.isNotEmpty() || settings.isNotEmpty() ||
+                legacy.isNotEmpty() || restoredSync != null || names.any(syncJournalName::matches)
             if (restoredSync == null && sessions.isEmpty() && settings.isEmpty() && legacy.isNotEmpty()) {
                 return@withLock migrateLegacy(legacy)
             }
