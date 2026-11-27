@@ -37,6 +37,7 @@ import android.content.Context
 import android.net.Uri
 import com.chatnotebook.app.data.MessageAttachment
 import com.chatnotebook.app.data.MessageRecord
+import com.chatnotebook.app.data.QuoteRecord
 import com.chatnotebook.app.data.ReminderPreview
 import com.chatnotebook.app.data.ReminderRecord
 import com.chatnotebook.app.data.SessionDocumentRecord
@@ -113,6 +114,33 @@ class ChatScreenTest {
         compose.onNodeWithTag("voice_button").assertDoesNotExist()
         compose.onNodeWithTag("send_button").assertIsDisplayed()
         compose.onNodeWithTag("image_button").assertIsEnabled()
+    }
+
+    @Test
+    fun quotedBubbleOpensFullContentAndJumpsToOriginal() {
+        var jumped: String? = null
+        val quoting = state.copy(
+            messages = listOf(
+                MessageRecord("m1", "s1", "user", "今天要买牛奶", createdAt = 1_700_000_000_000),
+                MessageRecord("m2", "s1", "user", "记得带购物袋", createdAt = 1_700_000_100_000),
+            ),
+            quotes = mapOf("m2" to QuoteRecord("m2", "m1", "今天要买牛奶")),
+        )
+        compose.setContent {
+            MaterialTheme {
+                ChatScreen(quoting, ChatActions(onGoToQuotedMessage = { jumped = it }))
+            }
+        }
+
+        compose.onNodeWithTag("quote_m2").performClick()
+        compose.onNodeWithTag("quote_full_m2").assertIsDisplayed()
+        compose.onNodeWithText("关闭").performClick()
+        compose.onNodeWithTag("quote_full_m2").assertDoesNotExist()
+
+        compose.onNodeWithTag("quote_m2").performTouchInput { longClick() }
+        compose.onNodeWithTag("quote_go_original").performClick()
+
+        assertEquals("m1", jumped)
     }
 
     @Test

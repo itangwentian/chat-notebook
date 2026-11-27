@@ -343,6 +343,7 @@ class MainActivity : ComponentActivity() {
                             onCancelMultiSelect = model::cancelMultiSelect,
                             onShowHistory = model::showHistory,
                             onDismissHistory = model::dismissHistory,
+                            onGoToQuotedMessage = model::goToMessage,
                             onToggleSessionSort = model::toggleSessionSort,
                             onRequestForwardMessages = model::requestForwardMessages,
                             onCancelForwardMessages = model::cancelForwardMessages,

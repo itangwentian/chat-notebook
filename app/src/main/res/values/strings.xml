@@ -50,6 +50,8 @@
     <string name="quote">引用</string>
     <string name="multi_select">多选</string>
     <string name="show_history">查看原文与历史</string>
+    <string name="go_to_original">前往原文</string>
+    <string name="quoted_content_title">引用内容</string>
     <string name="delete_message_title">删除消息？</string>
     <string name="delete_messages_title">删除 %1$d 条消息？</string>
     <string name="delete_message_hint">删除后消息将从正常列表移除，关联的旧整理结果会失效。</string>

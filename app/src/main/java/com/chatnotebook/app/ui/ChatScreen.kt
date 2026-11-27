@@ -209,6 +209,7 @@ data class ChatActions(
     val onCancelMultiSelect: () -> Unit = {},
     val onShowHistory: (MessageRecord) -> Unit = {},
     val onDismissHistory: () -> Unit = {},
+    val onGoToQuotedMessage: (String) -> Unit = {},
     val onToggleSessionSort: () -> Unit = {},
     val onOpenOrganizationResults: (String) -> Unit = {},
     val onRequestMergeMessages: () -> Unit = {},
@@ -730,7 +731,7 @@ private fun MessageBubble(
                     modifier = Modifier.padding(bottom = 2.dp).testTag("source_${message.id}"),
                 )
             }
-            quote?.let { QuotePreview(it) }
+            quote?.let { QuotePreview(it, onGoToOriginal = actions.onGoToQuotedMessage) }
             Box {
                 Surface(
                     color = bubbleColor,
@@ -840,24 +841,70 @@ private fun MessageBubble(
     }
 }
 
+/** 引用预览：点击查看完整内容，长按弹出菜单可跳转到原文。 */
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
-private fun QuotePreview(quote: QuoteRecord) {
-    Surface(
-        color = MaterialTheme.colorScheme.surfaceVariant,
-        shape = RoundedCornerShape(8.dp),
-        modifier = Modifier.padding(bottom = 2.dp).widthIn(max = 320.dp),
-    ) {
-        Text(
-            text = if (quote.preview.isEmpty()) {
-                stringResource(R.string.original_message_deleted)
-            } else {
-                quote.preview
+private fun QuotePreview(quote: QuoteRecord, onGoToOriginal: (String) -> Unit) {
+    var menuOpen by remember(quote.messageId) { mutableStateOf(false) }
+    var showFull by remember(quote.messageId) { mutableStateOf(false) }
+    Box {
+        Surface(
+            color = MaterialTheme.colorScheme.surfaceVariant,
+            shape = RoundedCornerShape(8.dp),
+            modifier = Modifier
+                .padding(bottom = 2.dp)
+                .widthIn(max = 320.dp)
+                .testTag("quote_${quote.messageId}")
+                .combinedClickable(
+                    onClick = { showFull = true },
+                    onLongClick = { menuOpen = true },
+                ),
+        ) {
+            Text(
+                text = if (quote.preview.isEmpty()) {
+                    stringResource(R.string.original_message_deleted)
+                } else {
+                    quote.preview
+                },
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.padding(8.dp),
+            )
+        }
+        DropdownMenu(expanded = menuOpen, onDismissRequest = { menuOpen = false }) {
+            DropdownMenuItem(
+                text = { Text(stringResource(R.string.go_to_original)) },
+                onClick = {
+                    menuOpen = false
+                    onGoToOriginal(quote.quotedMessageId)
+                },
+                modifier = Modifier.testTag("quote_go_original"),
+            )
+        }
+    }
+    if (showFull) {
+        AlertDialog(
+            onDismissRequest = { showFull = false },
+            title = { Text(stringResource(R.string.quoted_content_title)) },
+            text = {
+                Text(
+                    text = if (quote.preview.isEmpty()) {
+                        stringResource(R.string.original_message_deleted)
+                    } else {
+                        quote.preview
+                    },
+                    modifier = Modifier
+                        .verticalScroll(rememberScrollState())
+                        .testTag("quote_full_${quote.messageId}"),
+                )
             },
-            style = MaterialTheme.typography.bodySmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-            maxLines = 2,
-            overflow = TextOverflow.Ellipsis,
-            modifier = Modifier.padding(8.dp).testTag("quote_${quote.messageId}"),
+            confirmButton = {
+                TextButton(onClick = { showFull = false }) {
+                    Text(stringResource(R.string.close))
+                }
+            },
         )
     }
 }

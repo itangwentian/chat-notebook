@@ -372,6 +372,15 @@ class ChatViewModel(
         selectSession(id, focusMessageId = messageId)
     }
 
+    /** 引用预览跳转：原文仍在当前对话时滚动并高亮，已删除时给出行内提示。 */
+    fun goToMessage(messageId: String) {
+        if (_uiState.value.messages.none { it.id == messageId }) {
+            showNotice("原消息已删除")
+            return
+        }
+        focusMessage(messageId)
+    }
+
     /** 已加载的对话内直接滚动到指定消息并闪烁背景。 */
     private fun focusMessage(messageId: String) {
         _uiState.update {

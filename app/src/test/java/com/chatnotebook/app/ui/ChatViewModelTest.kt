@@ -803,6 +803,35 @@ class ChatViewModelTest {
         assertEquals(targetSession, model.uiState.value.activeSessionId)
         assertFalse(model.uiState.value.reminderListVisible)
     }
+
+    @Test fun goToQuotedMessageFocusesOriginalMessage() = runTest {
+        model.createSession()
+        model.updateInput("原文")
+        model.send()
+        model.updateInput("回复")
+        model.send()
+        advanceUntilIdle()
+        val original = model.uiState.value.messages.first()
+
+        model.goToMessage(original.id)
+        runCurrent()
+
+        assertEquals(original.id, model.uiState.value.scrollTargetId)
+        assertEquals(original.id, model.uiState.value.highlightMessageId)
+    }
+
+    @Test fun goToMissingQuotedMessageShowsNotice() = runTest {
+        model.createSession()
+        model.updateInput("原文")
+        model.send()
+        advanceUntilIdle()
+
+        model.goToMessage("missing")
+        runCurrent()
+
+        assertEquals("原消息已删除", model.uiState.value.notice)
+        assertNull(model.uiState.value.scrollTargetId)
+    }
 }
 
 private class FakeChatRepository : ChatRepository {
