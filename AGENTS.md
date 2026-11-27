@@ -2,7 +2,7 @@
 
 本项目使用 OpenSpec 管理需求和变更，配置位于 `openspec/config.yaml`。
 
-版本管理使用本地 SVN。当前目录是 trunk 工作副本，使用 `svn status`、`svn diff`、`svn update` 和 `svn commit` 管理变更。不要执行 Git 初始化或使用 Git 提交。仓库位置与维护命令见 README.md。
+版本管理使用 Git，远端为 GitHub 上的 `itangwentian/chat-notebook`，使用 `git status`、`git diff`、`git add`、`git commit` 和 `git push` 管理变更。项目早期的 SVN 历史保留在 `D:\CODES\.svn-repositories\chat_notebook`，只作归档，不再用 SVN 提交新变更。远端与命令约定见 README.md。
 
 - 新功能、架构调整和行为变更先形成 proposal、specs、design 和 tasks，再按任务实施。
 - 小型修复和文档修正按实际需要直接处理，避免创建无意义的变更。

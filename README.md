@@ -57,50 +57,25 @@ AI 整理可在设置中切换显式 Mock 与真实模型。Mock 模式离线、
 
 设置页支持新增、编辑、删除多个模型配置并指定默认配置。API Key 只以密文形式保存：使用 Android Keystore 的 AES/GCM 加密后写入 SharedPreferences，Room 与 JSON 快照均不保存明文，界面只显示脱敏状态。删除配置会同时清理对应密文；删除失败可重试。Keystore 加解密只能在真实设备或模拟器上验证，单元测试使用内存实现替代。Base URL 需为 HTTPS，请求路径约定为 `{baseUrl}/chat/completions`。连接测试会发起一次不带业务数据的请求，可能产生少量费用。
 
-## 本地 SVN 版本管理
+## 版本管理与开源仓库
 
-- 仓库目录：`D:\CODES\.svn-repositories\chat_notebook`。
-- 仓库地址：`file:///D:/CODES/.svn-repositories/chat_notebook`。
-- 当前工作副本：`D:\CODES\chat_notebook`，对应仓库的 `trunk`。
-- 仓库包含 `trunk`、`branches`、`tags`，分别用于主线、分支和标签。
-
-本机已安装 TortoiseSVN 及 SVN 命令行工具，无需启动 SVN 服务。
+- 开源仓库：<https://github.com/itangwentian/chat-notebook>，MIT 许可证；远端使用 SSH：`git@github.com:itangwentian/chat-notebook.git`。
+- 当前目录是 git 工作副本，主分支为 `main`，所有改动先在本地提交再推送。
+- 项目早期使用本地 SVN，仓库 `D:\CODES\.svn-repositories\chat_notebook` 只作历史归档，不再更新；`.svn` 已加入 `.gitignore`。
 
 ```powershell
-svn status
-svn diff
-svn update
-# 新文件需先添加，再提交
-svn add path/to/new-file
-svn commit -m "说明本次变更"
-svn log -l 5
+git status
+git diff
+# 新文件直接包含在 add 中
+git add -A
+git commit -m "说明本次变更"
+git push
+git log --oneline -5
 ```
 
-中文提交日志请写入 UTF-8 文件后用 `-F` 传入，避免命令行参数按系统代码页转换导致日志乱码：
+忽略规则见根目录 `.gitignore`：构建产物、签名文件与口令、`local.properties`、日志和 IDE 配置都不入库。`.agents` 和 `openspec` 纳入版本管理。
 
-```powershell
-svn commit -F message.txt --encoding UTF-8
-```
-
-在其他目录检出主线：
-
-```powershell
-svn checkout file:///D:/CODES/.svn-repositories/chat_notebook/trunk D:\CODES\chat_notebook-copy
-```
-
-根目录通过 `svn:global-ignores` 属性递归忽略依赖、构建产物、缓存及本地环境文件。`.agents` 和 `openspec` 纳入版本管理。查看规则：
-
-```powershell
-svn propget svn:global-ignores .
-```
-
-备份仓库时，将以下目标路径换成实际的备份位置（目标目录必须不存在）：
-
-```powershell
-svnadmin hotcopy D:\CODES\.svn-repositories\chat_notebook E:\backups\chat_notebook-svn
-```
-
-仓库保存完整历史，工作副本的 `.svn` 保存检出元数据；请保留二者。迁移或备份完整历史时使用仓库备份。
+若网络访问 `github.com` 受限，`git push` 可能被拦截，需在可访问外网的环境执行。
 
 ## OpenSpec 工作流
 

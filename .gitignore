@@ -1,3 +1,6 @@
+# 版本库元数据（项目已改为 git 维护，SVN 仅作历史归档）
+.svn/
+
 # Gradle / Android 构建产物
 .gradle/
 .kotlin/
@@ -17,6 +20,9 @@ keystore.properties
 .idea/
 .vscode/
 *.iml
+
+# 本地截图与临时产物
+.screenshots/
 
 # 系统文件
 .DS_Store
