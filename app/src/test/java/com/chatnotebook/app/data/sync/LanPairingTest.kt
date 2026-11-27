@@ -1,5 +1,6 @@
 package com.chatnotebook.app.data.sync
 
+import java.io.IOException
 import java.net.InetAddress
 import java.net.ServerSocket
 import java.net.Socket
@@ -48,22 +49,43 @@ class LanPairingTest {
     @Test fun scanningOncePersistsThePinnedPeerBeforeReportingSuccess() = runBlocking {
         val a = identity()
         val b = identity()
+        val hostCode = "a".repeat(64)
+        val joinerCode = "b".repeat(64)
         val loopback = InetAddress.getLoopbackAddress()
         ServerSocket(0, 1, loopback).use { server ->
             val offer = PairingTicket(a.fingerprint) { 0L }
             val host = async(Dispatchers.IO) {
                 server.accept().use {
-                    LanPairing(a, "第一台").accept(it, offer) { device ->
+                    LanPairing(a, "第一台", "Model A", hostCode).accept(it, offer) { device ->
                         assertEquals(b.fingerprint, device.fingerprint)
+                        assertEquals(joinerCode, device.deviceCode)
+                        assertEquals("Model B", device.model)
                     }
                 }
             }
             val joined = Socket(loopback, server.localPort).use {
-                LanPairing(b, "第二台").join(it, offer.offer)
+                LanPairing(b, "第二台", "Model B", joinerCode).join(it, offer.offer)
             }
-            assertEquals(PairDevice(a.fingerprint, "第一台"), joined)
-            assertEquals(PairDevice(b.fingerprint, "第二台"), host.await())
+            assertEquals(PairDevice(a.fingerprint, "第一台", hostCode, "Model A"), joined)
+            assertEquals(PairDevice(b.fingerprint, "第二台", joinerCode, "Model B"), host.await())
         }
+    }
+
+    @Test fun legacyPairingVersionIsRejectedWithUpdateHint() {
+        val error = runCatching { requirePairingVersion(2) }.exceptionOrNull()
+
+        assertTrue(error is IOException)
+        assertTrue(error?.message.orEmpty().contains("不兼容"))
+    }
+
+    @Test fun inconsistentPairingVersionIsRejectedWithUpdateHint() {
+        val legacy = "chat-notebook-pair:" + """{"protocol":2,"discoveryId":"${"0".repeat(8)}-0000-0000-0000-${"0".repeat(12)}",""" +
+            """"fingerprint":"${"1".repeat(64)}","token":"${"2".repeat(48)}"}"""
+
+        val error = runCatching { PairingOffer.decode(legacy) }.exceptionOrNull()
+
+        assertTrue(error is IllegalArgumentException)
+        assertTrue(error?.message.orEmpty().contains("不兼容"))
     }
 
     @Test fun hostStorageFailurePreventsScannerFromReportingSuccess() = runBlocking {
@@ -75,11 +97,15 @@ class LanPairingTest {
                 val offer = PairingTicket(a.fingerprint) { 0L }
                 val host = async(Dispatchers.IO) {
                     runCatching {
-                        server.accept().use { LanPairing(a, "第一台").accept(it, offer) { error("cannot save trust") } }
+                        server.accept().use {
+                            LanPairing(a, "第一台", "Model A", "a".repeat(64)).accept(it, offer) { error("cannot save trust") }
+                        }
                     }
                 }
                 val joined = runCatching {
-                    Socket(loopback, server.localPort).use { LanPairing(b, "第二台").join(it, offer.offer) }
+                    Socket(loopback, server.localPort).use {
+                        LanPairing(b, "第二台", "Model B", "b".repeat(64)).join(it, offer.offer)
+                    }
                 }
                 assertTrue(joined.isFailure)
                 assertTrue(host.await().isFailure)

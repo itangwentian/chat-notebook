@@ -123,6 +123,13 @@ internal fun LanSyncPanel(manager: LanSyncManager, onPickDirectory: () -> Unit) 
     )
 }
 
+/** 同名设备追加设备码后缀，避免用户无法分辨要移除哪一台。 */
+internal fun LanDevice.displayName(peers: List<LanDevice>): String {
+    if (peers.count { it.name == name } <= 1) return name
+    val suffix = deviceCode.takeLast(4).ifBlank { fingerprint.takeLast(4) }
+    return "$name · $suffix"
+}
+
 @Composable
 internal fun LanSyncSection(
     status: LanSyncStatus,
@@ -144,7 +151,7 @@ internal fun LanSyncSection(
                 if (status.peers.isNotEmpty()) {
                     status.peers.forEach { device ->
                         Row(Modifier.fillMaxWidth()) {
-                            Text("自己的设备 · ${device.name}", Modifier.weight(1f))
+                            Text("自己的设备 · ${device.displayName(status.peers)}", Modifier.weight(1f))
                             TextButton(onClick = { pendingRemove = device }) { Text("移除设备") }
                         }
                     }
@@ -200,7 +207,7 @@ internal fun LanSyncSection(
         AlertDialog(
             onDismissRequest = { pendingRemove = null },
             title = { Text("移除自己的设备？") },
-            text = { Text("将解除与「${device.name}」的配对，此设备上已保存的笔记会保留。") },
+            text = { Text("将解除与「${device.displayName(status.peers)}」的配对，此设备上已保存的笔记会保留。") },
             confirmButton = {
                 TextButton(
                     onClick = { pendingRemove = null; onUnlink(device.fingerprint) },

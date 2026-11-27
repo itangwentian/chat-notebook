@@ -12,6 +12,7 @@ import androidx.compose.ui.test.performScrollTo
 import com.chatnotebook.app.data.sync.LanDevice
 import com.chatnotebook.app.data.sync.LanSyncStatus
 import com.chatnotebook.app.data.sync.PairingTicket
+import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
@@ -90,6 +91,17 @@ class SettingsScreenTest {
         }
         compose.onNodeWithText("自己的设备 · 另一台设备").assertExists()
         compose.onNodeWithTag("lan_status").assertTextContains("记录目录已切换")
+    }
+
+    @Test
+    fun duplicatePeerNamesGetDeviceCodeSuffix() {
+        val first = LanDevice("a".repeat(64), "Pixel 6", "1".repeat(64))
+        val second = LanDevice("b".repeat(64), "Pixel 6", "2".repeat(64))
+        val peers = listOf(first, second)
+
+        assertEquals("Pixel 6 · 1111", first.displayName(peers))
+        assertEquals("Pixel 6 · 2222", second.displayName(peers))
+        assertEquals("Pixel 6", LanDevice("c".repeat(64), "Pixel 6", "3".repeat(64)).displayName(listOf(first)))
     }
 
     @Test

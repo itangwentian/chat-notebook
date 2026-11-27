@@ -11,9 +11,15 @@ import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
 
 private const val OFFER_LIFETIME_MS = 120_000L
-private const val PAIRING_VERSION = 2
+private const val PAIRING_VERSION = 3
 private val fingerprintPattern = Regex("[a-f0-9]{64}")
 private val tokenPattern = Regex("[a-f0-9]{48}")
+
+private fun String.isDeviceCode(): Boolean = isEmpty() || fingerprintPattern.matches(this)
+
+internal fun requirePairingVersion(protocol: Int) {
+    if (protocol != PAIRING_VERSION) throw IOException("配对版本不兼容，请更新两台设备")
+}
 
 @Serializable
 internal data class PairingOffer(
@@ -40,21 +46,107 @@ internal data class PairingOffer(
 @Serializable
 internal data class LanTrust(
     val fingerprint: String,
-    val localFingerprint: String,
+    val localFingerprint: String = "",
     val name: String,
+    val deviceCode: String = "",
+    val localDeviceCode: String = "",
 ) {
-    fun matches(localIdentity: String): Boolean = localIdentity == localFingerprint
+    fun belongsTo(localDeviceCode: String, localFingerprint: String): Boolean = when {
+        this.localDeviceCode.isNotBlank() -> this.localDeviceCode == localDeviceCode
+        else -> this.localFingerprint == localFingerprint
+    }
+
+    fun rebind(localDeviceCode: String, localFingerprint: String): LanTrust =
+        copy(localDeviceCode = localDeviceCode, localFingerprint = localFingerprint)
+}
+
+internal data class TrustRepair(val trusts: List<LanTrust>, val identityChanged: Boolean)
+
+/**
+ * 归一化已保存的信任：其他设备的备份数据被清理，本机条目在证书密钥变化时重绑定，
+ * 旧版本（无设备码）条目原地迁移而不丢失。
+ */
+internal fun List<LanTrust>.repair(
+    localDeviceCode: String,
+    localFingerprint: String,
+): TrustRepair {
+    var identityChanged = false
+    val trusts = mapNotNull { entry ->
+        if (entry.localDeviceCode.isNotBlank() && entry.localDeviceCode != localDeviceCode) {
+            null
+        } else if (entry.localFingerprint != localFingerprint || entry.localDeviceCode != localDeviceCode) {
+            identityChanged = identityChanged || entry.localFingerprint != localFingerprint
+            entry.rebind(localDeviceCode, localFingerprint)
+        } else {
+            entry
+        }
+    }
+    return TrustRepair(trusts, identityChanged)
+}
+
+/**
+ * 将本次配对结果写入信任：同一设备码、同一指纹或唯一同名的旧条目被替换，
+ * 不新增重复设备，也不影响其他已配对设备。
+ */
+internal fun List<LanTrust>.withPaired(
+    peer: PairDevice,
+    localDeviceCode: String,
+    localFingerprint: String,
+): List<LanTrust> {
+    val code = peer.deviceCode
+    val legacyCandidates = if (code.isBlank()) {
+        emptyList()
+    } else {
+        filter {
+            it.deviceCode.isBlank() &&
+                (it.name == peer.name || (peer.model.isNotBlank() && it.name == peer.model))
+        }
+    }
+    val legacyName = legacyCandidates.size == 1
+    val remaining = filterNot { entry ->
+        (code.isNotBlank() && entry.deviceCode == code) ||
+            entry.fingerprint == peer.fingerprint ||
+            (legacyName && entry.deviceCode.isBlank() && legacyCandidates.contains(entry))
+    }
+    return remaining + LanTrust(
+        fingerprint = peer.fingerprint,
+        localFingerprint = localFingerprint,
+        name = peer.name,
+        deviceCode = code,
+        localDeviceCode = localDeviceCode,
+    )
 }
 
 @Serializable
-private data class PairRequest(val protocol: Int, val token: String, val name: String)
+private data class PairRequest(
+    val protocol: Int,
+    val token: String,
+    val name: String,
+    val model: String = "",
+    val deviceCode: String = "",
+)
 
 @Serializable
-private data class PairAccepted(val protocol: Int, val name: String)
+private data class PairAccepted(
+    val protocol: Int,
+    val name: String,
+    val model: String = "",
+    val deviceCode: String = "",
+)
 
-internal data class PairDevice(val fingerprint: String, val name: String)
+internal data class PairDevice(
+    val fingerprint: String,
+    val name: String,
+    val deviceCode: String = "",
+    val model: String = "",
+)
 
-internal class LanPairing(private val identity: LanIdentity, private val name: String) {
+internal class LanPairing(
+    private val identity: LanIdentity,
+    private val name: String,
+    private val model: String,
+    private val deviceCode: String,
+) {
     suspend fun accept(
         socket: Socket,
         ticket: PairingTicket,
@@ -63,12 +155,14 @@ internal class LanPairing(private val identity: LanIdentity, private val name: S
         val fingerprint = (secure.session.peerCertificates.single() as X509Certificate).fingerprint()
         val frames = LanFrames(secure)
         val request = frames.read<PairRequest>(1024)
-        if (request.protocol != PAIRING_VERSION || fingerprint == identity.fingerprint || !ticket.consume(request.token)) {
+        requirePairingVersion(request.protocol)
+        if (fingerprint == identity.fingerprint || !ticket.consume(request.token)) {
             throw IOException("配对令牌无效")
         }
-        val device = PairDevice(fingerprint, request.name.take(60))
+        if (!request.deviceCode.isDeviceCode()) throw IOException("配对信息无效")
+        val device = PairDevice(fingerprint, request.name.take(60), request.deviceCode, request.model.take(60))
         persist(device)
-        frames.write(PairAccepted(PAIRING_VERSION, name.take(60)), 1024)
+        frames.write(PairAccepted(PAIRING_VERSION, name.take(60), model.take(60), deviceCode), 1024)
         device
     }
 
@@ -77,10 +171,11 @@ internal class LanPairing(private val identity: LanIdentity, private val name: S
         offer: PairingOffer,
     ): PairDevice = identity.secure(socket, client = true, expectedFingerprint = offer.fingerprint).use { secure ->
         val frames = LanFrames(secure)
-        frames.write(PairRequest(offer.protocol, offer.token, name.take(60)), 1024)
+        frames.write(PairRequest(offer.protocol, offer.token, name.take(60), model.take(60), deviceCode), 1024)
         val accepted = frames.read<PairAccepted>(1024)
-        if (accepted.protocol != PAIRING_VERSION) throw IOException("二维码配对版本不兼容")
-        PairDevice(offer.fingerprint, accepted.name.take(60))
+        requirePairingVersion(accepted.protocol)
+        if (!accepted.deviceCode.isDeviceCode()) throw IOException("配对信息无效")
+        PairDevice(offer.fingerprint, accepted.name.take(60), accepted.deviceCode, accepted.model.take(60))
     }
 }
 

@@ -27,7 +27,7 @@ import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withTimeoutOrNull
 
-internal data class LanDevice(val fingerprint: String, val name: String)
+internal data class LanDevice(val fingerprint: String, val name: String, val deviceCode: String = "")
 
 internal data class LanSyncStatus(
     val directoryReady: Boolean = false,
@@ -53,6 +53,9 @@ internal class LanSyncManager(
     private val prefs = context.getSharedPreferences("local_network_sync", Context.MODE_PRIVATE)
     private val trustStore = LanTrustStore(prefs)
     private val trust = MutableStateFlow(trustStore.read())
+    private val localDeviceCode by lazy { deviceCodeOf(context) }
+    private val localName by lazy { deviceNameOf(context) }
+    private val localModel = Build.MODEL.orEmpty()
     private val foreground = MutableStateFlow(false)
     private val storage = MutableStateFlow<Storage?>(null)
     private val running = MutableStateFlow(0)
@@ -230,10 +233,7 @@ internal class LanSyncManager(
 
     private suspend fun syncPeer(store: Storage, authorized: LanTrust) {
         val identity = loadIdentity() ?: return
-        if (!authorized.matches(identity.fingerprint)) {
-            removePeer(authorized.fingerprint)
-            return
-        }
+        if (trust.value.none { it.fingerprint == authorized.fingerprint }) return
         store.records.startSyncTracking(identity.fingerprint)
         val transport = LanTransport(context)
         val onNetwork = MutableStateFlow(true)
@@ -249,7 +249,7 @@ internal class LanSyncManager(
     }
 
     private suspend fun loadIdentity(): LanIdentity? = try {
-        LanIdentity.load()
+        LanIdentity.load().also(::repairTrust)
     } catch (error: CancellationException) {
         throw error
     } catch (error: Exception) {
@@ -263,24 +263,25 @@ internal class LanSyncManager(
         _status.update { it.copy(peers = trusts.devices()) }
     }
 
-    private fun removePeer(fingerprint: String) {
-        val remaining = trust.value.filterNot { it.fingerprint == fingerprint }
-        if (remaining.size == trust.value.size) return
-        updateTrust(remaining)
-        if (remaining.isEmpty()) {
-            prefs.edit().remove("last_success").apply()
-            _status.update { it.copy(lastSuccess = null, message = "设备身份已变化，请重新扫码") }
+    private fun repairTrust(identity: LanIdentity) {
+        val current = trust.value
+        if (current.isEmpty()) return
+        val repaired = current.repair(localDeviceCode, identity.fingerprint)
+        if (repaired.trusts != current) updateTrust(repaired.trusts)
+        if (repaired.identityChanged && repaired.trusts.isNotEmpty()) {
+            message("本机设备身份已更新，请重新扫码配对")
         }
     }
 
-    private fun List<LanTrust>.devices(): List<LanDevice> = map { LanDevice(it.fingerprint, it.name) }
+    private fun List<LanTrust>.devices(): List<LanDevice> =
+        map { LanDevice(it.fingerprint, it.name, it.deviceCode) }
 
     private suspend fun host(transport: LanTransport, lan: LanInterface, store: Storage, identity: LanIdentity, ticket: PairingTicket) {
         transport.serve(lan, ticket.offer.discoveryId, { false }, { _, _ -> }) { socket ->
             guarded("配对未完成") {
                 var saved: LanTrust? = null
                 try {
-                    LanPairing(identity, Build.MODEL).accept(socket, ticket) { peer ->
+                    LanPairing(identity, localName, localModel, localDeviceCode).accept(socket, ticket) { peer ->
                         saved = persistPeer(store, identity, peer)
                     }
                 } finally {
@@ -294,7 +295,7 @@ internal class LanSyncManager(
         transport.serve(lan, java.util.UUID.randomUUID().toString(), { it.discoveryId == offer.discoveryId }, { peer, sockets ->
             guarded("配对未完成") {
                 sockets.connect(peer) { socket ->
-                    val paired = LanPairing(identity, Build.MODEL).join(socket, offer)
+                    val paired = LanPairing(identity, localName, localModel, localDeviceCode).join(socket, offer)
                     persistPeer(store, identity, paired)
                     activatePeer()
                 }
@@ -305,12 +306,9 @@ internal class LanSyncManager(
     private suspend fun persistPeer(store: Storage, identity: LanIdentity, peer: PairDevice): LanTrust {
         currentCoroutineContext().ensureActive()
         check(storage.value === store && foreground.value && pairing.value != null) { "配对已取消" }
-        val authorized = LanTrust(peer.fingerprint, identity.fingerprint, peer.name)
-        val remaining = trust.value.filterNot {
-            it.fingerprint == peer.fingerprint || !it.matches(identity.fingerprint)
-        }
-        updateTrust(remaining + authorized)
-        return authorized
+        val merged = trust.value.withPaired(peer, localDeviceCode, identity.fingerprint)
+        updateTrust(merged)
+        return merged.last()
     }
 
     private fun activatePeer() {
