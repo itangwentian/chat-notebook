@@ -1975,18 +1975,22 @@ private fun ChatDrawer(state: ChatUiState, actions: ChatActions, onCloseDrawer: 
         Column(modifier = Modifier.fillMaxSize()) {
             Row(
                 verticalAlignment = Alignment.CenterVertically,
-                modifier = Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 8.dp),
-            ) {
-                IconButton(
-                    onClick = {
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clickable {
                         onCloseDrawer()
                         actions.onOpenSettings()
-                    },
-                    modifier = Modifier.testTag("settings_entry"),
-                ) {
-                    Text("⚙", style = MaterialTheme.typography.titleLarge)
-                }
-                Text(stringResource(R.string.settings), style = MaterialTheme.typography.titleMedium)
+                    }
+                    .heightIn(min = 56.dp)
+                    .padding(horizontal = 16.dp)
+                    .testTag("settings_entry"),
+            ) {
+                Text("⚙", style = MaterialTheme.typography.titleLarge)
+                Text(
+                    stringResource(R.string.settings),
+                    style = MaterialTheme.typography.titleMedium,
+                    modifier = Modifier.padding(start = 12.dp),
+                )
             }
             Button(
                 onClick = {
