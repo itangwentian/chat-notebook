@@ -31,7 +31,11 @@ internal class Inet4SocketImpl : SocketImpl() {
 
     private fun socketFd(): FileDescriptor = fd ?: throw SocketException("套接字已关闭")
 
-    override fun create(stream: Boolean) = throw UnsupportedOperationException("IPv4 套接字只用于已接受的连接")
+    /**
+     * `java.net.Socket(SocketImpl)` 不会把 created 置位，首次调用 getImpl()（如 setSoTimeout）
+     * 会懒创建并回调这里。文件描述符在 adopt() 时已就绪，因此只需保留现状。
+     */
+    override fun create(stream: Boolean) = Unit
 
     override fun bind(host: InetAddress?, port: Int) = throw UnsupportedOperationException("IPv4 套接字只用于已接受的连接")
 

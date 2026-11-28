@@ -35,7 +35,7 @@
 - [x] 6.1 更新 `LanPairingTest`、`PairingQrTest`：新字段往返、旧版本二维码被拒绝、非法地址/端口被拒绝
 - [x] 6.2 新增端口计算单元测试：对称、范围、稳定
 - [x] 6.3 运行 `testDebugUnitTest`、`assembleRelease`、`lintDebug`
-- [ ] 6.4 在 WSA 与手机（或两台设备）上实测扫码配对与后续同步，记录实际结果与未完成项（WSA 侧监听与二维码识别已验证，跨设备扫码仍缺第二台设备）
+- [ ] 6.4 在 WSA 与手机（或两台设备）上实测扫码配对与后续同步，记录实际结果与未完成项（WSA 侧监听、二维码识别与已接受套接字的读写/超时已在设备上单独验证，跨设备扫码仍缺第二台设备）
 - [x] 6.5 更新 README 更新记录与 `ABOUT.md`（如涉及配对方式说明）
 
 ## 实施记录
@@ -48,3 +48,5 @@
 - WSA 实测发现：WSA 与 Windows 宿主共用同一 IPv4（192.168.31.138），且镜像网络只把 AF_INET 监听映射到宿主。默认 java.net 套接字是 IPv6 双栈（`/proc/net/tcp6` 里的 `::`/`::ffff:`），宿主连接被拒绝；`-Djava.net.preferIPv4Stack=true` 与 `ServerSocketChannel.open(ProtocolFamily)` 均不可用。为此新增 `Inet4Sockets.kt`：用 `android.system.Os` 创建 AF_INET 的 `Inet4Listener`（bind/listen/poll/accept）与基于 `SocketImpl` 的 `Inet4Socket`，`LanTransport.bind/listen` 与 `LanSyncManager.Pairing.Show` 改用它，TLS 仍由 Conscrypt 通过套接字 fd 完成。
 - 本次 WSA 验证：安装启动后进入设置 → 局域网同步 → 显示二维码，`/proc/net/tcp` 出现应用 uid 的监听记录（如 `8A1FA8C0:9DE3` 即 192.168.31.138:40419，状态 `0A`），说明监听已是 AF_INET；Windows `netstat` 可见该端口由 WSA 代理监听，宿主 TCP 连接可建立。二维码 2 分钟过期提示、从图片识别二维码后提示“请确认两台设备连接同一局域网”均正常（自身地址被 `canReach` 拒绝）。
 - 未完成：跨设备扫码配对与同步实测。WSA 与宿主共用 IP，宿主发起的连接在应用内会被当作本机地址过滤，无法替代手机；当前 adb 只有 WSA，没有第二台设备。真机验证时应在手机与 WSA 处于同一局域网后互扫二维码，并确认配对后能双向同步。
+- 1.1.4 线上扫码配对报“配对连接失败：IPv4 套接字只用于已接受的连接”（手机与 WSA 均复现）。根因：`java.net.Socket(SocketImpl)` 不置位 `created`，`accept()` 之后 `LanSockets.track` 设置 `soTimeout` 会走 `getImpl()` 的懒创建并回调 `SocketImpl.create(true)`，而 `Inet4SocketImpl.create` 直接抛异常。修复为 `create` 空操作（fd 已在 `adopt()` 就绪）。
+- 修复验证：在 WSA 用 `app_process` 探针（`Inet4Listener` 绑 `0.0.0.0` → 客户端连入 → `accept()` → `setSoTimeout(8000)` → 双向读写）对比，1.1.4 抛该异常，1.1.5 输出 `soTimeout=8000`、`read=3`、`PROBE_OK`；同时确认显示二维码仍能建立 AF_INET 监听。WSA 回环地址在 app_process 中不可用，探针改用局域网地址。
