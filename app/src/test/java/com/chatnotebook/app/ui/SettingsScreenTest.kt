@@ -57,7 +57,7 @@ class SettingsScreenTest {
         assertTrue(paired)
         assertTrue(scanned)
         compose.runOnIdle {
-            sync.value = sync.value.copy(qr = PairingTicket("a".repeat(64)) { 0L }.offer)
+            sync.value = sync.value.copy(qr = PairingTicket("a".repeat(64), "192.168.1.20", 20_000) { 0L }.offer)
         }
         compose.onNodeWithText("配对二维码").assertIsDisplayed()
         compose.onNodeWithText(

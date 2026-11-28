@@ -16,12 +16,12 @@ import org.robolectric.annotation.Config
 @Config(sdk = [26])
 class PairingQrTest {
     @Test fun codeRoundTripPreservesTheFullDeviceFingerprint() {
-        val offer = PairingTicket("f".repeat(64)) { 0L }.offer
+        val offer = PairingTicket("f".repeat(64), "192.168.1.20", 20_000) { 0L }.offer
         assertEquals(offer, PairingQr.scan(PairingQr.display(offer)))
     }
 
     @Test fun rotatedCodesAreStillRecognized() {
-        val offer = PairingTicket("a".repeat(64)) { 0L }.offer
+        val offer = PairingTicket("a".repeat(64), "192.168.1.20", 20_000) { 0L }.offer
         val displayed = PairingQr.display(offer)
         for (degrees in intArrayOf(90, 180, 270)) {
             val rotated = rotate(displayed, degrees)
@@ -45,7 +45,7 @@ class PairingQrTest {
 
     @Test fun incompatibleVersionIsReported() {
         val payload = "chat-notebook-pair:" +
-            """{"protocol":1,"discoveryId":"${UUID.randomUUID()}","fingerprint":"${"f".repeat(64)}","token":"${"a".repeat(48)}"}"""
+            """{"protocol":3,"discoveryId":"${UUID.randomUUID()}","fingerprint":"${"f".repeat(64)}","token":"${"a".repeat(48)}"}"""
         val bitmap = qrBitmap(payload)
         assertTrue(failure(bitmap) is PairingScanException.VersionMismatch)
         bitmap.recycle()

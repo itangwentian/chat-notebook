@@ -78,4 +78,14 @@ class LanTransportTest {
         assertFalse(sameSubnet(address("fd00::11"), address("fd01::22"), 64))
         assertFalse(sameSubnet(address("fd00::11"), address("192.168.1.140"), 24))
     }
+
+    @Test fun syncPortIsSymmetricStableAndInRange() {
+        val first = "a".repeat(64)
+        val second = "b".repeat(64)
+        assertEquals(lanPort(first, second), lanPort(second, first))
+        assertEquals(lanPort(first, second), lanPort(first, second))
+        assertTrue(lanPort(first, second) in LAN_PORT_BASE until LAN_PORT_BASE + LAN_PORT_COUNT)
+        assertTrue(lanPort(second, first) in LAN_PORT_BASE until LAN_PORT_BASE + LAN_PORT_COUNT)
+        assertTrue(lanPort(first, second) != lanPort(first, "c".repeat(64)))
+    }
 }

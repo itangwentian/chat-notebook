@@ -2,20 +2,32 @@ package com.chatnotebook.app.data.sync
 
 import android.content.SharedPreferences
 import java.io.IOException
+import java.net.InetAddress
 import java.net.Socket
 import java.security.SecureRandom
 import java.security.cert.X509Certificate
-import java.util.UUID
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.int
+import kotlinx.serialization.json.jsonObject
+import kotlinx.serialization.json.jsonPrimitive
 
 private const val OFFER_LIFETIME_MS = 120_000L
-private const val PAIRING_VERSION = 3
+private const val PAIRING_VERSION = 4
 private val fingerprintPattern = Regex("[a-f0-9]{64}")
 private val tokenPattern = Regex("[a-f0-9]{48}")
 
 private fun String.isDeviceCode(): Boolean = isEmpty() || fingerprintPattern.matches(this)
+
+/** 只接受点分十进制 IPv4 字面量，避免解码时触发域名解析。 */
+private fun String.isIpv4Literal(): Boolean {
+    val parts = split('.')
+    return parts.size == 4 && parts.all { part ->
+        part.isNotEmpty() && part.length <= 3 && part.all(Char::isDigit) &&
+            (part.length == 1 || !part.startsWith('0')) && part.toInt() <= 255
+    }
+}
 
 internal fun requirePairingVersion(protocol: Int) {
     if (protocol != PAIRING_VERSION) throw IOException("配对版本不兼容，请更新两台设备")
@@ -24,13 +36,18 @@ internal fun requirePairingVersion(protocol: Int) {
 @Serializable
 internal data class PairingOffer(
     val protocol: Int = PAIRING_VERSION,
-    val discoveryId: String,
+    val address: String,
+    val port: Int,
     val fingerprint: String,
     val token: String,
 ) {
     init {
         require(protocol == PAIRING_VERSION) { "二维码配对版本不兼容，请更新两台设备" }
-        require(discoveryId.length == 36 && fingerprintPattern.matches(fingerprint) && tokenPattern.matches(token))
+        require(fingerprintPattern.matches(fingerprint) && tokenPattern.matches(token)) { "配对信息无效" }
+        val host = address.takeIf { it.isIpv4Literal() }?.let { InetAddress.getByName(it) }
+            ?: throw IllegalArgumentException("配对地址无效")
+        require(!host.isAnyLocalAddress && !host.isLoopbackAddress && !host.isMulticastAddress) { "配对地址无效" }
+        require(port in 1024..65535) { "配对端口无效" }
     }
 
     fun encode(): String = "chat-notebook-pair:" + syncJson.encodeToString(this)
@@ -38,7 +55,15 @@ internal data class PairingOffer(
     companion object {
         fun decode(text: String): PairingOffer {
             require(text.length <= 512 && text.startsWith("chat-notebook-pair:")) { "无法识别配对二维码" }
-            return syncJson.decodeFromString(text.removePrefix("chat-notebook-pair:"))
+            val payload = text.removePrefix("chat-notebook-pair:")
+            // 旧版本二维码缺少地址与端口，先读出版本号才能提示升级而不是“内容无效”。
+            val protocol = runCatching {
+                syncJson.parseToJsonElement(payload).jsonObject["protocol"]?.jsonPrimitive?.int
+            }.getOrNull()
+            if (protocol != null && protocol != PAIRING_VERSION) {
+                throw IllegalArgumentException("二维码配对版本不兼容，请更新两台设备")
+            }
+            return syncJson.decodeFromString(payload)
         }
     }
 }
@@ -50,6 +75,7 @@ internal data class LanTrust(
     val name: String,
     val deviceCode: String = "",
     val localDeviceCode: String = "",
+    val host: String = "",
 ) {
     fun belongsTo(localDeviceCode: String, localFingerprint: String): Boolean = when {
         this.localDeviceCode.isNotBlank() -> this.localDeviceCode == localDeviceCode
@@ -114,6 +140,7 @@ internal fun List<LanTrust>.withPaired(
         name = peer.name,
         deviceCode = code,
         localDeviceCode = localDeviceCode,
+        host = peer.host,
     )
 }
 
@@ -139,6 +166,7 @@ internal data class PairDevice(
     val name: String,
     val deviceCode: String = "",
     val model: String = "",
+    val host: String = "",
 )
 
 internal class LanPairing(
@@ -160,7 +188,13 @@ internal class LanPairing(
             throw IOException("配对令牌无效")
         }
         if (!request.deviceCode.isDeviceCode()) throw IOException("配对信息无效")
-        val device = PairDevice(fingerprint, request.name.take(60), request.deviceCode, request.model.take(60))
+        val device = PairDevice(
+            fingerprint,
+            request.name.take(60),
+            request.deviceCode,
+            request.model.take(60),
+            socket.inetAddress.hostAddress.orEmpty(),
+        )
         persist(device)
         frames.write(PairAccepted(PAIRING_VERSION, name.take(60), model.take(60), deviceCode), 1024)
         device
@@ -175,7 +209,7 @@ internal class LanPairing(
         val accepted = frames.read<PairAccepted>(1024)
         requirePairingVersion(accepted.protocol)
         if (!accepted.deviceCode.isDeviceCode()) throw IOException("配对信息无效")
-        PairDevice(offer.fingerprint, accepted.name.take(60), accepted.deviceCode, accepted.model.take(60))
+        PairDevice(offer.fingerprint, accepted.name.take(60), accepted.deviceCode, accepted.model.take(60), offer.address)
     }
 }
 
@@ -204,9 +238,15 @@ internal class LanTrustStore(private val prefs: SharedPreferences) {
     }
 }
 
-internal class PairingTicket(fingerprint: String, private val clock: () -> Long) {
+internal class PairingTicket(
+    fingerprint: String,
+    address: String,
+    port: Int,
+    private val clock: () -> Long,
+) {
     val offer = PairingOffer(
-        discoveryId = UUID.randomUUID().toString(),
+        address = address,
+        port = port,
         fingerprint = fingerprint,
         token = ByteArray(24).also(SecureRandom()::nextBytes).joinToString("") { "%02x".format(it) },
     )

@@ -7,6 +7,8 @@ import com.chatnotebook.app.data.AttachmentStore
 import com.chatnotebook.app.data.PersistentChatRepository
 import com.chatnotebook.app.data.RecordRepository
 import java.io.File
+import java.net.Inet4Address
+import java.net.InetAddress
 import java.net.Socket
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
@@ -20,6 +22,8 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.filterNotNull
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
@@ -45,8 +49,11 @@ internal class LanSyncManager(
 ) {
     private data class Storage(val records: RecordRepository, val attachments: AttachmentStore)
 
+    /** 同步会话以“指纹 + 是否已有对端地址”为键，地址自愈时不必重启会话。 */
+    private data class PeerKey(val fingerprint: String, val addressed: Boolean)
+
     private sealed interface Pairing {
-        data class Show(val ticket: PairingTicket) : Pairing
+        data class Show(val ticket: PairingTicket, val server: Inet4Listener, val lan: LanInterface) : Pairing
         data class Scan(val offer: PairingOffer) : Pairing
     }
 
@@ -87,16 +94,20 @@ internal class LanSyncManager(
         }
         scope.launch {
             combine(foreground, storage, trust, paused) { visible, store, devices, stopped ->
-                if (visible && store != null && devices.isNotEmpty() && !stopped) store to devices else null
-            }.collectLatest { active ->
+                if (visible && store != null && devices.isNotEmpty() && !stopped) {
+                    store to devices.map { PeerKey(it.fingerprint, it.host.isNotBlank()) }
+                } else {
+                    null
+                }
+            }.distinctUntilChanged().collectLatest { active ->
                 if (active != null) {
                     running.update { it + 1 }
                     try {
                         coroutineScope {
-                            active.second.forEach { device ->
+                            active.second.forEach { peer ->
                                 launch {
                                     try {
-                                        syncPeer(active.first, device)
+                                        syncPeer(active.first, peer.fingerprint)
                                     } catch (error: CancellationException) {
                                         throw error
                                     } catch (error: Exception) {
@@ -146,8 +157,26 @@ internal class LanSyncManager(
     fun showPairing() = scope.launch {
         guarded("无法生成配对二维码") {
             if (storage.value == null) return@guarded
-            val ticket = PairingTicket(LanIdentity.load().fingerprint, SystemClock::elapsedRealtime)
-            pairing.value = Pairing.Show(ticket)
+            val transport = LanTransport(context)
+            val lan = withTimeoutOrNull(10_000) { transport.interfaces().filterNotNull().first() }
+            if (lan == null) {
+                message("请先连接局域网")
+                return@guarded
+            }
+            if (lan.address.address !is Inet4Address) {
+                message("当前网络没有可用的 IPv4 地址，请检查局域网连接")
+                return@guarded
+            }
+            val identity = LanIdentity.load()
+            val server = transport.bind(lan, 0)
+            val ticket = PairingTicket(
+                identity.fingerprint,
+                lan.address.address.hostAddress.orEmpty(),
+                server.localPort,
+                SystemClock::elapsedRealtime,
+            )
+            (pairing.value as? Pairing.Show)?.server?.let { runCatching { it.close() } }
+            pairing.value = Pairing.Show(ticket, server, lan)
             _status.update { it.copy(qr = ticket.offer, joining = false, message = "等待另一台设备扫描") }
             delay(120_000)
             if ((pairing.value as? Pairing.Show)?.ticket === ticket) {
@@ -159,19 +188,22 @@ internal class LanSyncManager(
 
     fun join(offer: PairingOffer) {
         if (storage.value == null) return
+        (pairing.value as? Pairing.Show)?.let { runCatching { it.server.close() } }
         pairing.value = Pairing.Scan(offer)
-        _status.update { it.copy(qr = null, joining = true, message = "正在寻找扫码目标") }
+        _status.update { it.copy(qr = null, joining = true, message = "正在连接另一台设备") }
         scope.launch {
             delay(120_000)
             if ((pairing.value as? Pairing.Scan)?.offer == offer) {
                 cancelPairing()
-                message("配对超时，请检查局域网或重新扫码")
+                message("无法连接该设备，请确认两台设备在同一局域网后重试")
             }
         }
     }
 
     fun cancelPairing() {
-        (pairing.value as? Pairing.Show)?.ticket?.cancel()
+        val show = pairing.value as? Pairing.Show
+        show?.ticket?.cancel()
+        show?.server?.let { runCatching { it.close() } }
         pairing.value = null
         _status.update { it.copy(qr = null, joining = false) }
     }
@@ -221,9 +253,8 @@ internal class LanSyncManager(
                     MutableStateFlow(true), foreground, transport.interfaces(),
                     onFailure = { failure("配对连接失败", it) },
                 ) { lan ->
-                    message("等待另一台设备")
                     when (handshaking) {
-                        is Pairing.Show -> host(transport, lan, store, identity, handshaking.ticket)
+                        is Pairing.Show -> host(transport, lan, store, identity, handshaking)
                         is Pairing.Scan -> join(transport, lan, store, identity, handshaking.offer)
                     }
                 }.collect {}
@@ -233,9 +264,9 @@ internal class LanSyncManager(
         }
     }
 
-    private suspend fun syncPeer(store: Storage, authorized: LanTrust) {
+    private suspend fun syncPeer(store: Storage, fingerprint: String) {
         var backoff = SESSION_RETRY_MIN_MS
-        while (trust.value.any { it.fingerprint == authorized.fingerprint }) {
+        while (trust.value.any { it.fingerprint == fingerprint }) {
             currentCoroutineContext().ensureActive()
             val identity = loadIdentity()
             val ended = identity != null && guarded("局域网同步失败") {
@@ -245,7 +276,7 @@ internal class LanSyncManager(
                     MutableStateFlow(true), foreground, transport.interfaces(),
                     onFailure = { failure("局域网同步失败", it) },
                 ) { lan ->
-                    synchronize(transport, lan, store, identity, authorized)
+                    synchronize(transport, lan, store, identity, fingerprint)
                 }.collect {}
             }
             backoff = if (ended) SESSION_RETRY_MIN_MS else minOf(backoff * 2, SESSION_RETRY_MAX_MS)
@@ -281,12 +312,20 @@ internal class LanSyncManager(
     private fun List<LanTrust>.devices(): List<LanDevice> =
         map { LanDevice(it.fingerprint, it.name, it.deviceCode) }
 
-    private suspend fun host(transport: LanTransport, lan: LanInterface, store: Storage, identity: LanIdentity, ticket: PairingTicket) {
-        transport.serve(lan, ticket.offer.discoveryId, { false }, { _, _ -> }) { socket ->
+    private suspend fun host(
+        transport: LanTransport, lan: LanInterface, store: Storage, identity: LanIdentity, show: Pairing.Show,
+    ) {
+        if (!lan.address.address.address.contentEquals(show.lan.address.address.address)) {
+            cancelPairing()
+            message("网络已变化，请重新生成二维码")
+            return
+        }
+        val server = if (show.server.isClosed) transport.bind(lan, show.server.localPort) else show.server
+        transport.listen(lan, server) { socket ->
             guarded("配对未完成") {
                 var saved: LanTrust? = null
                 try {
-                    LanPairing(identity, localName, localModel, localDeviceCode).accept(socket, ticket) { peer ->
+                    LanPairing(identity, localName, localModel, localDeviceCode).accept(socket, show.ticket) { peer ->
                         saved = persistPeer(store, identity, peer)
                     }
                 } finally {
@@ -297,15 +336,39 @@ internal class LanSyncManager(
     }
 
     private suspend fun join(transport: LanTransport, lan: LanInterface, store: Storage, identity: LanIdentity, offer: PairingOffer) {
-        transport.serve(lan, java.util.UUID.randomUUID().toString(), { it.discoveryId == offer.discoveryId }, { peer, sockets ->
-            guarded("配对未完成") {
-                sockets.connect(peer) { socket ->
-                    val paired = LanPairing(identity, localName, localModel, localDeviceCode).join(socket, offer)
-                    persistPeer(store, identity, paired)
-                    activatePeer()
-                }
+        val address = try {
+            InetAddress.getByName(offer.address)
+        } catch (_: Exception) {
+            message("无法识别配对地址，请重新生成二维码")
+            delay(SESSION_RETRY_MIN_MS)
+            return
+        }
+        if (!lan.canReach(address)) {
+            message("请确认两台设备连接同一局域网")
+            delay(SESSION_RETRY_MIN_MS)
+            return
+        }
+        message("正在连接另一台设备")
+        var paired: PairDevice? = null
+        val connected = try {
+            transport.connect(lan, address, offer.port) { socket ->
+                paired = LanPairing(identity, localName, localModel, localDeviceCode).join(socket, offer)
             }
-        }, { _ -> })
+            true
+        } catch (error: CancellationException) {
+            throw error
+        } catch (_: Exception) {
+            false
+        }
+        if (!connected) {
+            message("无法连接该设备，请确认两台设备在同一局域网后重试")
+            delay(SESSION_RETRY_MIN_MS)
+            return
+        }
+        paired?.let {
+            persistPeer(store, identity, it)
+            activatePeer()
+        }
     }
 
     private suspend fun persistPeer(store: Storage, identity: LanIdentity, peer: PairDevice): LanTrust {
@@ -323,7 +386,7 @@ internal class LanSyncManager(
     }
 
     private suspend fun synchronize(
-        transport: LanTransport, lan: LanInterface, store: Storage, identity: LanIdentity, authorized: LanTrust,
+        transport: LanTransport, lan: LanInterface, store: Storage, identity: LanIdentity, fingerprint: String,
     ) {
         val library = SyncLibrary(
             store.records,
@@ -331,55 +394,75 @@ internal class LanSyncManager(
             mutations,
         )
         val protocol = LanSyncProtocol(library)
-        val initiator = identity.fingerprint < authorized.fingerprint
-        val ownTag = discoveryTag(identity.fingerprint, authorized.fingerprint)
-        val peerTag = discoveryTag(authorized.fingerprint, identity.fingerprint)
-        transport.serve(lan, ownTag, { initiator && it.discoveryId == peerTag }, { peer, sockets ->
-            var last: Pair<Long, Long>? = null
-            var backoff = 650L
-            while (true) {
-                currentCoroutineContext().ensureActive()
-                val generation = store.records.recordGeneration.value
-                val succeeded = guarded("局域网同步失败") {
-                    sockets.connect(peer) { socket ->
-                        sessionLock.withLock {
-                            identity.secure(socket, true, authorized.fingerprint).use {
-                                val frames = LanFrames(it)
-                                val local = library.generation()
-                                frames.write(SyncEpoch(local))
-                                val remote = frames.read<SyncEpoch>()
-                                remote.requireCompatible()
-                                val epochs = local to remote.generation
-                                frames.write(epochs != last)
-                                if (epochs != last) {
-                                    message("正在同步")
-                                    val transfer = protocol.exchange(frames, initiator = true)
-                                    last = epochs
-                                    success(transfer)
+        val initiator = identity.fingerprint < fingerprint
+        val port = lanPort(identity.fingerprint, fingerprint)
+        val server = transport.bind(lan, port)
+        coroutineScope {
+            if (initiator) {
+                launch {
+                    var last: Pair<Long, Long>? = null
+                    var backoff = 650L
+                    while (true) {
+                        currentCoroutineContext().ensureActive()
+                        val peerHost = trust.value.firstOrNull { it.fingerprint == fingerprint }?.host.orEmpty()
+                        val address = peerHost.takeIf { it.isNotBlank() }?.let {
+                            runCatching { InetAddress.getByName(it) }.getOrNull()
+                        }
+                        if (address == null) {
+                            message("请重新扫码配对以恢复同步")
+                            delay(SESSION_RETRY_MAX_MS)
+                            continue
+                        }
+                        if (!lan.canReach(address)) {
+                            message("对端不在当前局域网，请重新扫码配对")
+                            delay(SESSION_RETRY_MAX_MS)
+                            continue
+                        }
+                        val generation = store.records.recordGeneration.value
+                        val succeeded = guarded("局域网同步失败") {
+                            transport.connect(lan, address, port) { socket ->
+                                sessionLock.withLock {
+                                    identity.secure(socket, true, fingerprint).use {
+                                        val frames = LanFrames(it)
+                                        val local = library.generation()
+                                        frames.write(SyncEpoch(local))
+                                        val remote = frames.read<SyncEpoch>()
+                                        remote.requireCompatible()
+                                        val epochs = local to remote.generation
+                                        frames.write(epochs != last)
+                                        if (epochs != last) {
+                                            message("正在同步")
+                                            val transfer = protocol.exchange(frames, initiator = true)
+                                            last = epochs
+                                            success(transfer)
+                                        }
+                                    }
                                 }
                             }
                         }
+                        backoff = if (succeeded) 650L else minOf(backoff * 2, 10_000L)
+                        if (succeeded) withTimeoutOrNull(backoff) { store.records.recordGeneration.first { it != generation } }
+                        else delay(backoff)
                     }
                 }
-                backoff = if (succeeded) 650L else minOf(backoff * 2, 10_000L)
-                if (succeeded) withTimeoutOrNull(backoff) { store.records.recordGeneration.first { it != generation } }
-                else delay(backoff)
             }
-        }, { socket ->
-            if (!initiator) handlePaired(socket, identity, authorized, library, protocol)
-        })
+            transport.listen(lan, server) { socket ->
+                if (!initiator) handlePaired(socket, identity, fingerprint, library, protocol)
+            }
+        }
     }
 
     private suspend fun handlePaired(
-        socket: Socket, identity: LanIdentity, authorized: LanTrust, library: SyncLibrary, protocol: LanSyncProtocol,
+        socket: Socket, identity: LanIdentity, fingerprint: String, library: SyncLibrary, protocol: LanSyncProtocol,
     ) {
-        val secure = try { identity.secure(socket, false, authorized.fingerprint) } catch (_: javax.net.ssl.SSLException) {
+        val secure = try { identity.secure(socket, false, fingerprint) } catch (_: javax.net.ssl.SSLException) {
             return
         } catch (_: java.io.IOException) {
             return
         }
         sessionLock.withLock {
             secure.use {
+                rememberHost(fingerprint, socket.inetAddress.hostAddress.orEmpty())
                 guarded("局域网同步失败") {
                     val frames = LanFrames(it)
                     val remote = frames.read<SyncEpoch>()
@@ -394,7 +477,14 @@ internal class LanSyncManager(
         }
     }
 
-    private fun discoveryTag(first: String, second: String): String = sha256("lan:$first:$second".toByteArray())
+    /** 入站连接已通过指纹认证，用来源地址刷新对端地址，实现地址变化后的自愈。 */
+    private fun rememberHost(fingerprint: String, host: String) {
+        if (host.isBlank()) return
+        val current = trust.value
+        val target = current.firstOrNull { it.fingerprint == fingerprint } ?: return
+        if (target.host == host) return
+        updateTrust(current.map { if (it.fingerprint == fingerprint) it.copy(host = host) else it })
+    }
 
     private fun success(transfer: SyncTransfer) {
         val now = System.currentTimeMillis()

@@ -18,17 +18,33 @@ import org.junit.Test
 class LanPairingTest {
     @Test fun expiredCancelledAndPreviouslyUsedOffersAreRejected() {
         var time = 10L
-        val ticket = PairingTicket("1".repeat(64)) { time }
+        val ticket = ticket("1".repeat(64)) { time }
         assertEquals(ticket.offer, PairingOffer.decode(ticket.offer.encode()))
+        assertEquals("192.168.1.20", ticket.offer.address)
+        assertEquals(20_000, ticket.offer.port)
         assertFalse(ticket.consume("bad"))
         assertTrue(ticket.consume(ticket.offer.token))
         assertFalse(ticket.consume(ticket.offer.token))
-        val cancelled = PairingTicket("2".repeat(64)) { time }
+        val cancelled = ticket("2".repeat(64)) { time }
         cancelled.cancel()
         assertFalse(cancelled.consume(cancelled.offer.token))
-        val expired = PairingTicket("3".repeat(64)) { time }
+        val expired = ticket("3".repeat(64)) { time }
         time += 120_000
         assertFalse(expired.consume(expired.offer.token))
+    }
+
+    @Test fun pairingOffersRejectNonIpv4AddressesAndInvalidPorts() {
+        val fingerprint = "1".repeat(64)
+        val token = "2".repeat(48)
+        fun offer(address: String, port: Int) = PairingOffer(4, address, port, fingerprint, token)
+
+        offer("192.168.1.20", 20_000)
+        listOf("" to 20_000, "localhost" to 20_000, "0.0.0.0" to 20_000,
+            "127.0.0.1" to 20_000, "192.168.1" to 20_000, "192.168.01.2" to 20_000,
+            "192.168.1.20" to 80, "192.168.1.20" to 70_000).forEach { (address, port) ->
+            assertTrue("应拒绝 $address:$port",
+                runCatching { offer(address, port) }.exceptionOrNull() is IllegalArgumentException)
+        }
     }
 
     @Test fun pinsRejectThirdPartyAndReplacedTrustRejectsOldPeer() {
@@ -53,21 +69,25 @@ class LanPairingTest {
         val joinerCode = "b".repeat(64)
         val loopback = InetAddress.getLoopbackAddress()
         ServerSocket(0, 1, loopback).use { server ->
-            val offer = PairingTicket(a.fingerprint) { 0L }
+            val offer = ticket(a.fingerprint) { 0L }
             val host = async(Dispatchers.IO) {
                 server.accept().use {
                     LanPairing(a, "第一台", "Model A", hostCode).accept(it, offer) { device ->
                         assertEquals(b.fingerprint, device.fingerprint)
                         assertEquals(joinerCode, device.deviceCode)
                         assertEquals("Model B", device.model)
+                        assertEquals(loopback.hostAddress, device.host)
                     }
                 }
             }
             val joined = Socket(loopback, server.localPort).use {
                 LanPairing(b, "第二台", "Model B", joinerCode).join(it, offer.offer)
             }
-            assertEquals(PairDevice(a.fingerprint, "第一台", hostCode, "Model A"), joined)
-            assertEquals(PairDevice(b.fingerprint, "第二台", joinerCode, "Model B"), host.await())
+            assertEquals(PairDevice(a.fingerprint, "第一台", hostCode, "Model A", offer.offer.address), joined)
+            assertEquals(
+                PairDevice(b.fingerprint, "第二台", joinerCode, "Model B", loopback.hostAddress.orEmpty()),
+                host.await(),
+            )
         }
     }
 
@@ -79,7 +99,7 @@ class LanPairingTest {
     }
 
     @Test fun inconsistentPairingVersionIsRejectedWithUpdateHint() {
-        val legacy = "chat-notebook-pair:" + """{"protocol":2,"discoveryId":"${"0".repeat(8)}-0000-0000-0000-${"0".repeat(12)}",""" +
+        val legacy = "chat-notebook-pair:" + """{"protocol":2,"address":"192.168.1.20","port":20000,""" +
             """"fingerprint":"${"1".repeat(64)}","token":"${"2".repeat(48)}"}"""
 
         val error = runCatching { PairingOffer.decode(legacy) }.exceptionOrNull()
@@ -94,7 +114,7 @@ class LanPairingTest {
         val loopback = InetAddress.getLoopbackAddress()
         supervisorScope {
             ServerSocket(0, 1, loopback).use { server ->
-                val offer = PairingTicket(a.fingerprint) { 0L }
+                val offer = ticket(a.fingerprint) { 0L }
                 val host = async(Dispatchers.IO) {
                     runCatching {
                         server.accept().use {
@@ -116,4 +136,7 @@ class LanPairingTest {
     private fun identity() = HeldCertificate.Builder().ecdsa256().build().let {
         LanIdentity(it.keyPair.private, it.certificate)
     }
+
+    private fun ticket(fingerprint: String, clock: () -> Long) =
+        PairingTicket(fingerprint, "192.168.1.20", 20_000, clock)
 }

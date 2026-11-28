@@ -7,18 +7,13 @@ import android.net.LinkProperties
 import android.net.Network
 import android.net.NetworkCapabilities
 import android.net.NetworkRequest
-import android.net.nsd.NsdManager
-import android.net.nsd.NsdServiceInfo
-import android.net.wifi.WifiManager
-import android.os.Build
 import java.io.IOException
 import java.net.Inet4Address
 import java.net.InetAddress
 import java.net.InetSocketAddress
-import java.net.ServerSocket
 import java.net.Socket
+import java.net.SocketException
 import java.net.SocketTimeoutException
-import java.util.UUID
 import java.util.concurrent.ConcurrentHashMap
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
@@ -29,20 +24,21 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.callbackFlow
-import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.distinctUntilChanged
-import kotlinx.coroutines.flow.filter
 import kotlinx.coroutines.flow.transformLatest
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
-private const val SERVICE_TYPE = "_chat-notebook._tcp."
 private const val TIMEOUT_MS = 8_000
 
 internal const val SESSION_RETRY_MIN_MS = 500L
 internal const val SESSION_RETRY_MAX_MS = 10_000L
+
+/** 同步端口范围，避开系统临时端口段，减少与系统分配端口的冲突。 */
+internal const val LAN_PORT_BASE = 20_000
+internal const val LAN_PORT_COUNT = 9_000
 
 internal data class LanInterface(val network: Network, val address: LinkAddress) {
     fun canReach(peer: InetAddress): Boolean =
@@ -50,7 +46,14 @@ internal data class LanInterface(val network: Network, val address: LinkAddress)
             sameSubnet(address.address.address, peer.address, address.prefixLength)
 }
 
-internal data class LanPeer(val discoveryId: String, val address: InetAddress, val port: Int)
+/**
+ * 一对已配对设备共用的同步端口：两个指纹按固定顺序参与哈希，两端算出同一个端口，
+ * 无需 mDNS 发现即可直连。
+ */
+internal fun lanPort(first: String, second: String): Int {
+    val pair = listOf(first, second).sorted()
+    return LAN_PORT_BASE + sha256("lan-port:${pair[0]}:${pair[1]}".toByteArray()).take(4).toInt(16) % LAN_PORT_COUNT
+}
 
 internal fun sameSubnet(local: ByteArray, remote: ByteArray, prefixLength: Int): Boolean {
     if (local.size != remote.size || prefixLength !in 1..(local.size * 8)) return false
@@ -95,7 +98,6 @@ internal fun <T> foregroundLanSessions(
 
 internal class LanTransport(private val context: Context) {
     private val connectivity = context.getSystemService(ConnectivityManager::class.java)
-    private val nsd = context.getSystemService(NsdManager::class.java)
 
     fun interfaces(): Flow<LanInterface?> = callbackFlow {
         val links = mutableMapOf<Network, LinkAddress>()
@@ -140,122 +142,73 @@ internal class LanTransport(private val context: Context) {
         .addCapability(NetworkCapabilities.NET_CAPABILITY_NOT_VPN)
         .build()
 
-    suspend fun serve(
+    /**
+     * 在局域网地址上绑定监听端口。传入 0 时由系统分配端口，供配对二维码携带。
+     */
+    fun bind(lan: LanInterface, port: Int = 0): Inet4Listener {
+        val socket = Inet4Listener()
+        try {
+            socket.bind(lan.address.address, port)
+        } catch (error: Exception) {
+            runCatching { socket.close() }
+            throw error
+        }
+        return socket
+    }
+
+    suspend fun listen(
         lan: LanInterface,
-        discoveryId: String,
-        selectPeer: (LanPeer) -> Boolean,
-        onPeer: suspend (LanPeer, LanSockets) -> Unit,
+        server: Inet4Listener,
         onIncoming: suspend (Socket) -> Unit,
     ) = withContext(Dispatchers.IO) {
         val sockets = LanSockets(lan)
-        val server = ServerSocket()
-        val wifi = context.getSystemService(WifiManager::class.java)
-        val multicast = wifi?.createMulticastLock("chat-notebook:lan")
-        multicast?.acquire()
+        server.soTimeout = 500
         try {
-            server.bind(InetSocketAddress(lan.address.address, 0))
-            server.soTimeout = 500
             coroutineScope {
-                launch {
-                    discovered(lan, discoveryId, server.localPort).filter(selectPeer)
-                        .distinctUntilChanged().collectLatest { onPeer(it, sockets) }
-                }
-                try {
-                    while (isActive) {
-                        val socket = try { server.accept() } catch (_: SocketTimeoutException) { continue }
-                        if (!lan.canReach(socket.inetAddress)) {
-                            socket.close()
-                            continue
-                        }
-                        sockets.track(socket)
-                        launch {
-                            try { onIncoming(socket) } finally { sockets.release(socket) }
-                        }
+                while (isActive) {
+                    val socket = try {
+                        server.accept()
+                    } catch (_: SocketTimeoutException) {
+                        continue
+                    } catch (_: SocketException) {
+                        break
                     }
-                } finally {
-                    server.close()
-                    sockets.close()
+                    if (!lan.canReach(socket.inetAddress)) {
+                        socket.close()
+                        continue
+                    }
+                    sockets.track(socket)
+                    launch {
+                        try { onIncoming(socket) } finally { sockets.release(socket) }
+                    }
                 }
             }
         } finally {
             server.close()
             sockets.close()
-            if (multicast?.isHeld == true) multicast.release()
         }
     }
 
-    @Suppress("DEPRECATION")
-    private fun discovered(lan: LanInterface, id: String, port: Int): Flow<LanPeer> = callbackFlow {
-        val resolve = mutableSetOf<String>()
-        val discovery = object : NsdManager.DiscoveryListener {
-            override fun onDiscoveryStarted(serviceType: String) = Unit
-            override fun onDiscoveryStopped(serviceType: String) = Unit
-            override fun onStopDiscoveryFailed(serviceType: String, errorCode: Int) = Unit
-            override fun onStartDiscoveryFailed(serviceType: String, errorCode: Int) {
-                close(IOException("无法发现局域网设备 ($errorCode)"))
-            }
-            override fun onServiceLost(serviceInfo: NsdServiceInfo) = Unit
-            override fun onServiceFound(serviceInfo: NsdServiceInfo) {
-                if (!resolve.add(serviceInfo.serviceName)) return
-                nsd.resolveService(serviceInfo, object : NsdManager.ResolveListener {
-                    override fun onResolveFailed(info: NsdServiceInfo, errorCode: Int) {
-                        resolve.remove(info.serviceName)
-                    }
-                    override fun onServiceResolved(info: NsdServiceInfo) {
-                        resolve.remove(info.serviceName)
-                        val peer = info.attributes["id"]?.decodeToString() ?: return
-                        val protocol = info.attributes["v"]?.decodeToString()
-                        if (peer == id || protocol != LAN_SYNC_VERSION.toString()) return
-                        val addresses = if (Build.VERSION.SDK_INT >= 34) info.hostAddresses else listOfNotNull(info.host)
-                        val address = addresses.firstOrNull(lan::canReach) ?: return
-                        trySend(LanPeer(peer, address, info.port))
-                    }
-                })
-            }
-        }
-        val registration = object : NsdManager.RegistrationListener {
-            override fun onServiceRegistered(info: NsdServiceInfo) = Unit
-            override fun onServiceUnregistered(info: NsdServiceInfo) = Unit
-            override fun onUnregistrationFailed(info: NsdServiceInfo, errorCode: Int) = Unit
-            override fun onRegistrationFailed(info: NsdServiceInfo, errorCode: Int) {
-                close(IOException("无法发布局域网同步服务 ($errorCode)"))
-            }
-        }
-        val service = NsdServiceInfo().apply {
-            // A new listener uses a new DNS-SD instance name so cached SRV records cannot keep its old port.
-            serviceName = "ChatNotebook-${UUID.randomUUID().toString().take(12)}"
-            serviceType = SERVICE_TYPE
-            setPort(port)
-            setAttribute("id", id)
-            setAttribute("v", LAN_SYNC_VERSION.toString())
-            if (Build.VERSION.SDK_INT >= 33) network = lan.network
-        }
-        nsd.registerService(service, NsdManager.PROTOCOL_DNS_SD, registration)
-        try {
-            if (Build.VERSION.SDK_INT >= 33) {
-                nsd.discoverServices(SERVICE_TYPE, NsdManager.PROTOCOL_DNS_SD, lan.network, context.mainExecutor, discovery)
-            } else {
-                nsd.discoverServices(SERVICE_TYPE, NsdManager.PROTOCOL_DNS_SD, discovery)
-            }
-            awaitClose { runCatching { nsd.stopServiceDiscovery(discovery) } }
-        } finally {
-            runCatching { nsd.unregisterService(registration) }
-        }
-    }
+    suspend fun connect(
+        lan: LanInterface,
+        address: InetAddress,
+        port: Int,
+        use: suspend (Socket) -> Unit,
+    ) = withContext(Dispatchers.IO) { LanSockets(lan).connect(address, port, use) }
 }
 
 internal class LanSockets(private val lan: LanInterface) {
     private val active = ConcurrentHashMap.newKeySet<Socket>()
     private var closed = false
 
-    suspend fun connect(peer: LanPeer, use: suspend (Socket) -> Unit) {
-        require(peer.port in 1..65535 && lan.canReach(peer.address))
+    suspend fun connect(address: InetAddress, port: Int, use: suspend (Socket) -> Unit) {
+        require(port in 1..65535 && lan.canReach(address))
         val socket = Socket()
         track(socket)
         try {
             lan.network.bindSocket(socket)
             socket.bind(InetSocketAddress(lan.address.address, 0))
-            socket.connect(InetSocketAddress(peer.address, peer.port), TIMEOUT_MS)
+            socket.connect(InetSocketAddress(address, port), TIMEOUT_MS)
             use(socket)
         } finally {
             release(socket)
