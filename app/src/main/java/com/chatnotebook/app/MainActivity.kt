@@ -216,6 +216,11 @@ class MainActivity : ComponentActivity() {
                 val picker = rememberLauncherForActivityResult(
                     ActivityResultContracts.OpenDocumentTree(),
                 ) { uri -> uri?.let { model.selectDirectory(it.toString()) } }
+                // 用带结果的方式启动分享目标，让微信等应用拿到 callingPackage，
+                // 分享完成后的“返回原应用”才能回到本应用。
+                val forwardShare = rememberLauncherForActivityResult(
+                    ActivityResultContracts.StartActivityForResult(),
+                ) { }
                 val scope = rememberCoroutineScope()
                 val saveImage: (MessageAttachment, Uri) -> Unit = { attachment, uri ->
                     scope.launch {
@@ -353,7 +358,7 @@ class MainActivity : ComponentActivity() {
                                 model.shareForwardMessages { messages ->
                                     val send = MessageSharing.prepare(applicationContext, messages, attachmentUri = model::attachmentUri)
                                     try {
-                                        startActivity(send.setComponent(target))
+                                        forwardShare.launch(send.setComponent(target))
                                     } catch (error: ActivityNotFoundException) {
                                         throw IllegalStateException(getString(R.string.share_launch_failed), error)
                                     } catch (error: SecurityException) {

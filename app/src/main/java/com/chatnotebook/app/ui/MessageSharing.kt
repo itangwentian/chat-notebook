@@ -111,6 +111,8 @@ internal object MessageSharing {
         }
         require(text.isNotEmpty() || streams.isNotEmpty()) { context.getString(R.string.share_empty) }
         return format(messages).intent().apply {
+            // 微信等应用分享成功后依赖 referrer 识别来源，“返回原应用”才有效。
+            putExtra(Intent.EXTRA_REFERRER, Uri.parse("android-app://${context.packageName}"))
             if (text.isNotEmpty()) putExtra(Intent.EXTRA_TEXT, text)
             if (streams.isNotEmpty()) {
                 if (streams.size == 1) {

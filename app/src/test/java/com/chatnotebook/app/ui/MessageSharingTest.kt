@@ -35,6 +35,10 @@ class MessageSharingTest {
         assertEquals("text/plain", intent.type)
         assertEquals("修改后的正文\n\n第二条", intent.getStringExtra(Intent.EXTRA_TEXT))
         assertFalse(intent.hasExtra(Intent.EXTRA_STREAM))
+        assertEquals(
+            "android-app://${context.packageName}",
+            intent.getParcelableExtra<Uri>(Intent.EXTRA_REFERRER)?.toString(),
+        )
     }
 
     @Test fun sharesSingleImageWithTextAndReadOnlyGrant() = runBlocking {
