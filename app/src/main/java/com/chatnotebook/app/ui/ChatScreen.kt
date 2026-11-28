@@ -1424,17 +1424,17 @@ private fun MessageActionSheet(
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
                 modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp),
             ) {
-                MessageActionCard("↩", stringResource(R.string.quote), "menu_quote", Modifier.weight(1f)) {
+                MessageActionCard("“", stringResource(R.string.quote), "menu_quote", Modifier.weight(1f)) {
                     onDismiss()
                     actions.onRequestQuote(message)
-                }
-                MessageActionCard("⧉", stringResource(R.string.copy), "menu_copy", Modifier.weight(1f)) {
-                    onDismiss()
-                    onCopy(message.currentContent)
                 }
                 MessageActionCard("↪", stringResource(R.string.forward_title), "menu_forward", Modifier.weight(1f)) {
                     onDismiss()
                     actions.onForwardMessage(message)
+                }
+                MessageActionCard("⧉", stringResource(R.string.copy), "menu_copy", Modifier.weight(1f)) {
+                    onDismiss()
+                    onCopy(message.currentContent)
                 }
                 if (message.role == "user") {
                     MessageActionCard("✎", stringResource(R.string.edit), "menu_edit", Modifier.weight(1f)) {
