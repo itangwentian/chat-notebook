@@ -10,6 +10,13 @@
     <string name="share_attachment_failed">无法读取所选附件，请检查记录目录后重试</string>
     <string name="share_empty">所选消息没有可分享的内容</string>
     <string name="share_launch_failed">无法打开所选应用，请选择其他转发目标</string>
+    <string name="update_available">发现新版本 %1$s</string>
+    <string name="update_hint">从 GitHub 下载最新安装包，完成后会提示安装。</string>
+    <string name="update_action">点击更新</string>
+    <string name="update_downloading">正在下载… %1$d%%</string>
+    <string name="update_download_failed">下载更新失败，请重试</string>
+    <string name="update_install_permission">请允许安装未知来源应用后重试</string>
+    <string name="update_install_failed">无法启动安装，请重试</string>
     <string name="app_name">聊天笔记</string>
     <string name="open_drawer">打开功能栏</string>
     <string name="settings">设置</string>

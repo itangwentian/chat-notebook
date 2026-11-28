@@ -46,13 +46,18 @@ fun SettingsRoute(repository: ChatRepository, onBack: () -> Unit, onPickDirector
         syncContent = {
             (repository as? PersistentChatRepository)?.let { LanSyncPanel(it.lanSync, onPickDirectory) }
         },
+        updateContent = { UpdatePanel() },
         onBack = onBack,
     )
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun SettingsScreen(syncContent: @Composable () -> Unit = {}, onBack: () -> Unit = {}) {
+fun SettingsScreen(
+    syncContent: @Composable () -> Unit = {},
+    updateContent: @Composable () -> Unit = {},
+    onBack: () -> Unit = {},
+) {
     var legalDocument by remember { mutableStateOf<LegalDocument?>(null) }
     val viewing = legalDocument
     BackHandler(enabled = viewing != null) { legalDocument = null }
@@ -77,6 +82,7 @@ fun SettingsScreen(syncContent: @Composable () -> Unit = {}, onBack: () -> Unit 
             modifier = Modifier.fillMaxSize().padding(padding).verticalScroll(rememberScrollState()),
         ) {
             syncContent()
+            updateContent()
             AboutSection(
                 onOpenPrivacy = { legalDocument = LegalDocument.PrivacyPolicy },
                 onOpenAgreement = { legalDocument = LegalDocument.UserAgreement },

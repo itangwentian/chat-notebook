@@ -860,7 +860,22 @@ class ChatViewModel(
     }
 
     fun cancelForwardMessages() {
-        _uiState.update { it.copy(forwardPickerVisible = false) }
+        _uiState.update {
+            it.copy(
+                forwardPickerVisible = false,
+                selectedMessages = if (it.multiSelect) it.selectedMessages else emptySet(),
+            )
+        }
+    }
+
+    fun forwardMessage(message: MessageRecord) {
+        _uiState.update {
+            it.copy(
+                selectedMessages = setOf(message.id),
+                forwardPickerVisible = true,
+                revealedMessageId = null,
+            )
+        }
     }
 
     fun shareForwardMessages(launchShare: suspend (List<MessageRecord>) -> Unit) {

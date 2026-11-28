@@ -2,4 +2,5 @@
 <paths>
     <cache-path name="shared_messages" path="shared-messages/" />
     <cache-path name="pairing" path="pairing/" />
+    <cache-path name="updates" path="updates/" />
 </paths>

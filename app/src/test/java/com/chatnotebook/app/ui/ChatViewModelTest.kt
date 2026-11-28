@@ -179,6 +179,36 @@ class ChatViewModelTest {
         assertEquals(listOf("要转发的消息"), model.uiState.value.messages.map { it.currentContent })
     }
 
+    @Test fun forwardingSingleMessageFromMenuSkipsMultiSelectAndCancelClearsSelection() = runTest {
+        model.createSession()
+        val sourceId = model.uiState.value.activeSessionId!!
+        model.updateInput("要转发的消息")
+        model.send()
+        val message = model.uiState.value.messages.single()
+
+        model.createSession()
+        val targetId = model.uiState.value.activeSessionId!!
+        model.selectSession(sourceId)
+        advanceUntilIdle()
+
+        model.forwardMessage(message)
+        assertTrue(model.uiState.value.forwardPickerVisible)
+        assertFalse(model.uiState.value.multiSelect)
+        assertEquals(setOf(message.id), model.uiState.value.selectedMessages)
+
+        model.cancelForwardMessages()
+        assertFalse(model.uiState.value.forwardPickerVisible)
+        assertTrue(model.uiState.value.selectedMessages.isEmpty())
+
+        model.forwardMessage(message)
+        model.confirmForwardMessages(targetId)
+        advanceUntilIdle()
+
+        assertEquals(1, repository.forwardCalls)
+        assertFalse(model.uiState.value.forwardPickerVisible)
+        assertTrue(model.uiState.value.selectedMessages.isEmpty())
+    }
+
     @Test fun sharingUsesMessageOrderAndKeepsSelectionAfterHandoff() = runTest {
         model.createSession()
         model.updateInput("第一条")

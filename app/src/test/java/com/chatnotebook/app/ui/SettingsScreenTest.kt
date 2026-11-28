@@ -12,6 +12,7 @@ import androidx.compose.ui.test.performScrollTo
 import com.chatnotebook.app.data.sync.LanDevice
 import com.chatnotebook.app.data.sync.LanSyncStatus
 import com.chatnotebook.app.data.sync.PairingTicket
+import com.chatnotebook.app.update.AppUpdate
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Rule
@@ -114,5 +115,32 @@ class SettingsScreenTest {
         compose.onNodeWithText("凭据").assertDoesNotExist()
         compose.onNodeWithText("新增服务").assertDoesNotExist()
         compose.onNodeWithTag("about_section").assertExists()
+    }
+
+    @Test
+    fun updateEntryStaysHiddenWithoutReachableNewerRelease() {
+        compose.setContent {
+            MaterialTheme { SettingsScreen(updateContent = { UpdatePanel(checker = { null }) }) }
+        }
+
+        compose.onNodeWithTag("update_section").assertDoesNotExist()
+        compose.onNodeWithText("点击更新").assertDoesNotExist()
+    }
+
+    @Test
+    fun updateEntryShowsLatestVersionWhenAvailable() {
+        compose.setContent {
+            MaterialTheme {
+                SettingsScreen(
+                    updateContent = {
+                        UpdatePanel(checker = { AppUpdate("1.1.6", "https://example.com/app.apk", 1024) })
+                    },
+                )
+            }
+        }
+
+        compose.onNodeWithText("发现新版本 1.1.6").assertIsDisplayed()
+        compose.onNodeWithTag("update_install").assertIsDisplayed()
+        compose.onNodeWithText("点击更新").assertIsDisplayed()
     }
 }

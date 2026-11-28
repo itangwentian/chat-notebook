@@ -35,6 +35,7 @@ import androidx.compose.ui.text.TextRange
 import android.content.ClipboardManager
 import android.content.Context
 import android.net.Uri
+import com.chatnotebook.app.data.EditRecord
 import com.chatnotebook.app.data.MessageAttachment
 import com.chatnotebook.app.data.MessageRecord
 import com.chatnotebook.app.data.QuoteRecord
@@ -55,6 +56,7 @@ import org.robolectric.RuntimeEnvironment
 import org.robolectric.Shadows.shadowOf
 import org.robolectric.annotation.Config
 import org.robolectric.annotation.GraphicsMode
+import org.robolectric.shadows.ShadowToast
 
 @RunWith(RobolectricTestRunner::class)
 @GraphicsMode(GraphicsMode.Mode.NATIVE)
@@ -183,6 +185,45 @@ class ChatScreenTest {
         val clipboard = RuntimeEnvironment.getApplication()
             .getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
         assertEquals("今天要买牛奶", clipboard.primaryClip?.getItemAt(0)?.text?.toString())
+    }
+
+    @Test
+    fun messageMenuForwardOpensForwardPickerForThatMessage() {
+        var forwarded: MessageRecord? = null
+        compose.setContent {
+            MaterialTheme {
+                ChatScreen(state, ChatActions(onForwardMessage = { forwarded = it }))
+            }
+        }
+
+        compose.onNodeWithText("今天要买牛奶").performTouchInput { longClick() }
+        compose.onNodeWithTag("menu_forward").performClick()
+
+        assertEquals("m1", forwarded?.id)
+    }
+
+    @Test
+    fun historyVersionsCopyTheirContentAndNotify() {
+        val history = listOf(
+            EditRecord("m1", 1, 2, "第一版", "第二版", 1_700_000_001_000),
+            EditRecord("m1", 2, 3, "第二版", "第三版", 1_700_000_002_000),
+        )
+        compose.setContent {
+            MaterialTheme { ChatScreen(state.copy(history = history), ChatActions()) }
+        }
+        val clipboard = RuntimeEnvironment.getApplication()
+            .getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+
+        compose.onNodeWithText("原始内容：第一版").performClick()
+        assertEquals("第一版", clipboard.primaryClip?.getItemAt(0)?.text?.toString())
+        assertEquals("已复制", ShadowToast.getTextOfLatestToast())
+
+        compose.onNodeWithText("版本 2：第二版").performClick()
+        assertEquals("第二版", clipboard.primaryClip?.getItemAt(0)?.text?.toString())
+        assertEquals("已复制", ShadowToast.getTextOfLatestToast())
+
+        compose.onNodeWithText("版本 3：第三版").performClick()
+        assertEquals("第三版", clipboard.primaryClip?.getItemAt(0)?.text?.toString())
     }
 
     @Test

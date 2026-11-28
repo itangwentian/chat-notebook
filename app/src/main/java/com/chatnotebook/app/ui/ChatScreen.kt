@@ -216,6 +216,7 @@ data class ChatActions(
     val onCancelMergeMessages: () -> Unit = {},
     val onConfirmMergeMessages: () -> Unit = {},
     val onRequestForwardMessages: () -> Unit = {},
+    val onForwardMessage: (MessageRecord) -> Unit = {},
     val onCancelForwardMessages: () -> Unit = {},
     val onConfirmForwardMessages: (String) -> Unit = {},
     val onShareForwardMessages: (ComponentName) -> Unit = {},
@@ -1430,6 +1431,10 @@ private fun MessageActionSheet(
                 MessageActionCard("⧉", stringResource(R.string.copy), "menu_copy", Modifier.weight(1f)) {
                     onDismiss()
                     onCopy(message.currentContent)
+                }
+                MessageActionCard("↪", stringResource(R.string.forward_title), "menu_forward", Modifier.weight(1f)) {
+                    onDismiss()
+                    actions.onForwardMessage(message)
                 }
                 if (message.role == "user") {
                     MessageActionCard("✎", stringResource(R.string.edit), "menu_edit", Modifier.weight(1f)) {
@@ -2696,6 +2701,12 @@ private fun MergeMessagesDialog(state: ChatUiState, actions: ChatActions) {
 
 @Composable
 private fun HistoryDialog(history: List<EditRecord>, actions: ChatActions) {
+    val clipboard = LocalClipboardManager.current
+    val context = LocalContext.current
+    val copy = { text: String ->
+        clipboard.setText(AnnotatedString(text))
+        Toast.makeText(context, "已复制", Toast.LENGTH_SHORT).show()
+    }
     AlertDialog(
         onDismissRequest = actions.onDismissHistory,
         title = { Text(stringResource(R.string.history_title)) },
@@ -2708,14 +2719,20 @@ private fun HistoryDialog(history: List<EditRecord>, actions: ChatActions) {
                         Text(
                             stringResource(R.string.original_content, history.first().oldContent),
                             style = MaterialTheme.typography.bodySmall,
-                            modifier = Modifier.padding(bottom = 8.dp),
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clickable { copy(history.first().oldContent) }
+                                .padding(bottom = 8.dp),
                         )
                     }
                     items(history, key = { it.toVersion }) { edit ->
                         Text(
                             text = stringResource(R.string.edit_version, edit.toVersion, edit.newContent),
                             style = MaterialTheme.typography.bodySmall,
-                            modifier = Modifier.padding(vertical = 4.dp),
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clickable { copy(edit.newContent) }
+                                .padding(vertical = 4.dp),
                         )
                     }
                 }

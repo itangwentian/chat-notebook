@@ -346,6 +346,7 @@ class MainActivity : ComponentActivity() {
                             onGoToQuotedMessage = model::goToMessage,
                             onToggleSessionSort = model::toggleSessionSort,
                             onRequestForwardMessages = model::requestForwardMessages,
+                            onForwardMessage = model::forwardMessage,
                             onCancelForwardMessages = model::cancelForwardMessages,
                             onConfirmForwardMessages = model::confirmForwardMessages,
                             onShareForwardMessages = { target ->
